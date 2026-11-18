@@ -59,7 +59,11 @@ Semua plugin yang diuji pada tabel ini adalah ekstensi CloudStream. Tidak ada ek
 ## Kesimpulan Fase 0
 
 - Fork SkyStream berhasil dijalankan pada Android dan Windows.
-- Ekstensi CloudStream dapat dipasang dan dapat memutar video pada kedua platform.
-- Keandalan tiap plugin/server tidak sama. Kegagalan pada Moviebox, Layarkaca untuk judul tertentu, dan Idlix dicatat sebagai masalah sumber/plugin saat uji, bukan kegagalan build aplikasi.
-- `flutter test` dijalankan tanpa perubahan kode Fase 0 dan berakhir gagal: 4.030 lulus, 6 dilewati, 34 gagal. Kegagalan mencakup test isolasi token `js_engine_bridge_attribution_test.dart` dan test search/Nuvio yang melaporkan binding belum diinisialisasi. Karena Fase 0 tidak mengubah kode aplikasi, hasil ini dicatat sebagai baseline fork/dependensi saat ini dan tidak diperbaiki pada fase setup.
+- Ekstensi CloudStream dapat dipasang dan terbukti memutar video pada kedua platform.
+- Keandalan tiap plugin/server tidak sama. Kegagalan Moviebox, Layarkaca pada judul tertentu, dan Idlix dicatat sebagai masalah sumber/plugin saat uji, bukan kegagalan build aplikasi.
+- Baseline awal `flutter test` adalah 4.030 lulus, 6 dilewati, 34 gagal. Akar kegagalan terbesar di Windows ialah loader test QuickJS mencari `quickjs_c_bridge.dll`, sementara build aplikasi menyediakan `flutter_js_plugin.dll`.
+- Loader Windows dan test yang sensitif terhadap path, jenis error filesystem, race async, izin `chmod`, serta akhir-baris diperbaiki tanpa melemahkan test keamanan. Verifikasi final Windows melalui `flutter test --machine`: **4.430/4.430 test sukses, 0 gagal**.
+- Perbaikan baseline direkam dan dipush pada commit `4540a15f` (`test: fix Windows baseline suite`) di branch `fase-0-setup`.
 - Lisensi `LICENSE` ada dan berisi GNU GPL v3.
+
+**Status akhir:** Fase 0 selesai. Lingkungan, build Android/Windows, uji ekstensi CloudStream, dan baseline test Windows sudah terverifikasi. Fase 1 tetap ditahan sampai ada PRD baru.
