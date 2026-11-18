@@ -141,10 +141,13 @@ void main() {
       // step 4, so seeing both ends arrive with nothing in between is what
       // makes the absence meaningful - init really did run past the old site
       // rather than bailing out early.
-      expect(nativeCalls, containsAllInOrder(<String>[
-        'configHoldingQueue',
-        'popProgressUpdates',
-      ]));
+      expect(
+        nativeCalls,
+        containsAllInOrder(<String>[
+          'configHoldingQueue',
+          'popProgressUpdates',
+        ]),
+      );
       expect(
         nativeCalls,
         isNot(contains('permissionStatus')),
@@ -231,7 +234,7 @@ void main() {
 
       await expectLater(
         start(directory: unusable),
-        throwsA(isA<FileSystemException>()),
+        throwsA(isA<PathExistsException>()),
       );
 
       // The user-visible half is the launcher's job; this is the half that
@@ -244,7 +247,7 @@ void main() {
         reason: 'a silent start failure is unsupportable; log was:\n$log',
       );
       expect(log, contains('a.mp4'));
-      expect(log, contains('FileSystemException'));
+      expect(log, contains('PathExistsException'));
     });
 
     test('a successful start logs nothing', () async {

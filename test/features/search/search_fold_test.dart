@@ -258,7 +258,10 @@ void main() {
         'tool/search_fold_table.py',
       ], stdoutEncoding: utf8);
       expect(made.exitCode, 0, reason: '${made.stderr}');
-      expect(made.stdout, table);
+      expect(
+        made.stdout.replaceAll(String.fromCharCode(13), ''),
+        table.replaceAll(String.fromCharCode(13), ''),
+      );
     });
   });
 }

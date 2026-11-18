@@ -126,7 +126,7 @@ abstract base class JSPropertyEnum extends Opaque {}
 
 final DynamicLibrary _qjsLib = Platform.environment['FLUTTER_TEST'] == 'true'
     ? (Platform.isWindows
-        ? DynamicLibrary.open('quickjs_c_bridge.dll')
+        ? DynamicLibrary.open('flutter_js_plugin.dll')
         : Platform.isMacOS
             ? DynamicLibrary.process()
             : DynamicLibrary.open(

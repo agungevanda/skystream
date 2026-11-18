@@ -43,9 +43,9 @@ void main() {
     scratch = Directory.systemTemp.createTempSync('hive_recovery_scratch');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (call) async => scratch.path,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => scratch.path,
+        );
     final images = DefaultCacheManager();
     try {
       // Waits on the cache's database, which can't open under flutter_test, as
@@ -66,9 +66,9 @@ void main() {
     if (!scratch.existsSync()) scratch.createSync(recursive: true);
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      (call) async => scratch.path,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          (call) async => scratch.path,
+        );
     Hive.init(dir.path);
     service = StorageService();
   });
@@ -76,9 +76,9 @@ void main() {
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('plugins.flutter.io/path_provider'),
-      null,
-    );
+          const MethodChannel('plugins.flutter.io/path_provider'),
+          null,
+        );
     await Hive.close();
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
@@ -86,8 +86,11 @@ void main() {
   File boxFile(String name) =>
       File('${dir.path}${Platform.pathSeparator}$name.hive');
 
-  test('an environmental failure is rethrown and the box file survives',
-      () async {
+  test('an environmental failure is rethrown and the box file survives', () async {
+    if (Platform.isWindows) {
+      markTestSkipped('chmod cannot model a denied lock file on Windows');
+      return;
+    }
     // The case with real-world frequency. Hive's own crashRecovery defaults to
     // true (hive-2.2.3/lib/src/hive_impl.dart:133) and silently repairs the
     // common corruption - an unclean kill during a write - so the old bare
@@ -161,43 +164,45 @@ void main() {
   // (Keep Extensions)" - both run `clearPreferences`. So clearPreferences has
   // to work on a StorageService whose `init()` aborted part-way through
   // assigning its four `late` box fields.
-  test('a reset deletes the boxes even when init() never opened them',
-      () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+  test(
+    'a reset deletes the boxes even when init() never opened them',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
 
-    // Seed the four boxes on disk and then close them, so nothing is
-    // registered with Hive - the state after an `openBox` that threw, which
-    // never reaches `_boxes[name] = newBox` (hive-2.2.3 hive_impl.dart:107).
-    const boxes = [
-      StorageService.kLibraryBox,
-      StorageService.kSettingsBox,
-      StorageService.kHistoryBox,
-      StorageService.kExtensionsBox,
-    ];
-    for (final name in boxes) {
-      final seed = await Hive.openBox<dynamic>(name);
-      await seed.put('k', 'v');
-      await seed.close();
-      expect(boxFile(name).existsSync(), isTrue);
-    }
+      // Seed the four boxes on disk and then close them, so nothing is
+      // registered with Hive - the state after an `openBox` that threw, which
+      // never reaches `_boxes[name] = newBox` (hive-2.2.3 hive_impl.dart:107).
+      const boxes = [
+        StorageService.kLibraryBox,
+        StorageService.kSettingsBox,
+        StorageService.kHistoryBox,
+        StorageService.kExtensionsBox,
+      ];
+      for (final name in boxes) {
+        final seed = await Hive.openBox<dynamic>(name);
+        await seed.put('k', 'v');
+        await seed.close();
+        expect(boxFile(name).existsSync(), isTrue);
+      }
 
-    // `service` comes straight from setUp: constructed, never init()ed, so
-    // every `late Box` field is unassigned. That is precisely what
-    // LaunchErrorApp holds, because init() always aborts AT the box that will
-    // not open - the box the user needs deleted is always an unassigned one.
-    await service.clearPreferences(keepRepos: false);
+      // `service` comes straight from setUp: constructed, never init()ed, so
+      // every `late Box` field is unassigned. That is precisely what
+      // LaunchErrorApp holds, because init() always aborts AT the box that will
+      // not open - the box the user needs deleted is always an unassigned one.
+      await service.clearPreferences(keepRepos: false);
 
-    for (final name in boxes) {
-      expect(
-        boxFile(name).existsSync(),
-        isFalse,
-        reason:
-            "'$name' survived the reset. Reading an unassigned `late` field "
-            'must not be able to skip the delete, or the next launch fails '
-            'identically and the user has no in-app way out.',
-      );
-    }
-  });
+      for (final name in boxes) {
+        expect(
+          boxFile(name).existsSync(),
+          isFalse,
+          reason:
+              "'$name' survived the reset. Reading an unassigned `late` field "
+              'must not be able to skip the delete, or the next launch fails '
+              'identically and the user has no in-app way out.',
+        );
+      }
+    },
+  );
 
   // The settings box holds both subtitle account usernames; the matching
   // passwords are reusable account passwords in the platform secure store.
@@ -230,35 +235,36 @@ void main() {
   // repositories they list from ever arriving; losing the removals brings
   // back every repository the user took out of one. The keys are read off
   // ExtensionsController, so the storage layer's copy of them cannot drift.
-  test('a reset that keeps extensions keeps the collections they follow',
-      () async {
-    const repo = 'https://a.test/repo.json';
-    const collections = '{"universe":["$repo","https://b.test/repo.json"]}';
-    const seen = '{"$repo":["com.example.alpha"]}';
-    SharedPreferences.setMockInitialValues(<String, Object>{
-      ExtensionsController.repoUrlsKey: <String>[repo],
-      ExtensionsController.collectionsKey: collections,
-      ExtensionsController.removedRepoUrlsKey: <String>[
-        'https://b.test/repo.json',
-      ],
-      ExtensionsController.seenPluginsKey: seen,
-      'unrelated_setting': true,
-    });
-    FlutterSecureStorage.setMockInitialValues(<String, String>{});
+  test(
+    'a reset that keeps extensions keeps the collections they follow',
+    () async {
+      const repo = 'https://a.test/repo.json';
+      const collections = '{"universe":["$repo","https://b.test/repo.json"]}';
+      const seen = '{"$repo":["com.example.alpha"]}';
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        ExtensionsController.repoUrlsKey: <String>[repo],
+        ExtensionsController.collectionsKey: collections,
+        ExtensionsController.removedRepoUrlsKey: <String>[
+          'https://b.test/repo.json',
+        ],
+        ExtensionsController.seenPluginsKey: seen,
+        'unrelated_setting': true,
+      });
+      FlutterSecureStorage.setMockInitialValues(<String, String>{});
 
-    await service.clearPreferences();
+      await service.clearPreferences();
 
-    final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getStringList(ExtensionsController.repoUrlsKey), <String>[
-      repo,
-    ]);
-    expect(prefs.getString(ExtensionsController.collectionsKey), collections);
-    expect(
-      prefs.getStringList(ExtensionsController.removedRepoUrlsKey),
-      <String>['https://b.test/repo.json'],
-    );
-    expect(prefs.getString(ExtensionsController.seenPluginsKey), seen);
-    expect(prefs.containsKey('unrelated_setting'), isFalse);
-  });
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getStringList(ExtensionsController.repoUrlsKey), <String>[
+        repo,
+      ]);
+      expect(prefs.getString(ExtensionsController.collectionsKey), collections);
+      expect(
+        prefs.getStringList(ExtensionsController.removedRepoUrlsKey),
+        <String>['https://b.test/repo.json'],
+      );
+      expect(prefs.getString(ExtensionsController.seenPluginsKey), seen);
+      expect(prefs.containsKey('unrelated_setting'), isFalse);
+    },
+  );
 }
-
