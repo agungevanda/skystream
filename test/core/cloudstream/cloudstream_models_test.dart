@@ -30,8 +30,31 @@ void main() {
     expect(plugin.repositoryUrl, _repoUrl);
   });
 
+  test('NSFW comes only from the original tvTypes metadata', () {
+    final adult = CsPluginInfo.fromJson({
+      'internalName': 'Adult',
+      'name': 'Ordinary name',
+      'url': 'https://repo.test/adult.cs3',
+      'tvTypes': ['Movie', 'NSFW'],
+    }, _repoUrl);
+    final harmless = CsPluginInfo.fromJson({
+      'internalName': 'Harmless',
+      'name': 'NSFW in a name is not metadata',
+      'url': 'https://repo.test/harmless.cs3',
+      'tvTypes': ['Movie'],
+    }, _repoUrl);
+
+    expect(adult.isNsfw, isTrue);
+    expect(harmless.isNsfw, isFalse);
+  });
+
   test('a repository survives saving and reading back', () {
-    final repo = CsRepository(url: _repoUrl, name: 'Test', description: 'd', plugins: [_plugin()]);
+    final repo = CsRepository(
+      url: _repoUrl,
+      name: 'Test',
+      description: 'd',
+      plugins: [_plugin()],
+    );
     final back = CsRepository.fromJson(repo.toJson());
     expect(back.url, _repoUrl);
     expect(back.name, 'Test');
@@ -41,34 +64,48 @@ void main() {
   });
 
   group('installed plugins', () {
-    const root = '/var/mobile/Containers/Data/Application/NEW/Library/Application Support/extensions/cloudstream';
+    const root =
+        '/var/mobile/Containers/Data/Application/NEW/Library/Application Support/extensions/cloudstream';
 
-    test('are saved relative to CloudStream\'s folder and read back under it', () {
-      final installed = CsInstalledPlugin(
-        info: _plugin(),
-        filePath: '$root/plugins/0a1b2c3d4e/Alpha.cs3',
-        providers: const [CsProviderInfo(name: 'Alpha', sections: ['Latest'])],
-        extractors: 2,
-      );
-      final json = installed.toJson(root);
-      expect(json['file'], 'plugins/0a1b2c3d4e/Alpha.cs3');
-      final back = CsInstalledPlugin.fromJson(json, root);
-      expect(back.filePath, '$root/plugins/0a1b2c3d4e/Alpha.cs3');
-      expect(back.providers.single.sections, ['Latest']);
-      expect(back.extractors, 2);
-    });
+    test(
+      'are saved relative to CloudStream\'s folder and read back under it',
+      () {
+        final installed = CsInstalledPlugin(
+          info: _plugin(),
+          filePath: '$root/plugins/0a1b2c3d4e/Alpha.cs3',
+          providers: const [
+            CsProviderInfo(name: 'Alpha', sections: ['Latest']),
+          ],
+          extractors: 2,
+        );
+        final json = installed.toJson(root);
+        expect(json['file'], 'plugins/0a1b2c3d4e/Alpha.cs3');
+        final back = CsInstalledPlugin.fromJson(json, root);
+        expect(back.filePath, '$root/plugins/0a1b2c3d4e/Alpha.cs3');
+        expect(back.providers.single.sections, ['Latest']);
+        expect(back.extractors, 2);
+      },
+    );
 
     test('saved with an absolute path before are found under the current folder', () {
-      final json = CsInstalledPlugin(info: _plugin(), filePath: 'x').toJson(root)
-        ..remove('file')
-        ..['filePath'] =
-            '/var/mobile/Containers/Data/Application/OLD/Library/Application Support/extensions/cloudstream/plugins/0a1b2c3d4e/Alpha.cs3';
-      expect(CsInstalledPlugin.fromJson(json, root).filePath, '$root/plugins/0a1b2c3d4e/Alpha.cs3');
+      final json =
+          CsInstalledPlugin(info: _plugin(), filePath: 'x').toJson(root)
+            ..remove('file')
+            ..['filePath'] =
+                '/var/mobile/Containers/Data/Application/OLD/Library/Application Support/extensions/cloudstream/plugins/0a1b2c3d4e/Alpha.cs3';
+      expect(
+        CsInstalledPlugin.fromJson(json, root).filePath,
+        '$root/plugins/0a1b2c3d4e/Alpha.cs3',
+      );
     });
 
     test('keep Windows paths working', () {
-      const windowsRoot = r'C:\Users\a\AppData\Roaming\skystream\extensions\cloudstream';
-      final installed = CsInstalledPlugin(info: _plugin(), filePath: '$windowsRoot\\plugins\\0a\\Alpha.cs3');
+      const windowsRoot =
+          r'C:\Users\a\AppData\Roaming\skystream\extensions\cloudstream';
+      final installed = CsInstalledPlugin(
+        info: _plugin(),
+        filePath: '$windowsRoot\\plugins\\0a\\Alpha.cs3',
+      );
       expect(installed.toJson(windowsRoot)['file'], 'plugins/0a/Alpha.cs3');
     });
   });
@@ -80,11 +117,21 @@ void main() {
       url: 'https://r.test/A.cs3',
       repositoryUrl: 'https://r.test/repo.json',
     );
-    const plugin = CsInstalledPlugin(info: info, filePath: '/root/plugins/A.cs3', hasSettings: true);
+    const plugin = CsInstalledPlugin(
+      info: info,
+      filePath: '/root/plugins/A.cs3',
+      hasSettings: true,
+    );
     final json = plugin.toJson('/root');
     expect(json['hasSettings'], isTrue);
     expect(CsInstalledPlugin.fromJson(json, '/root').hasSettings, isTrue);
-    expect(CsInstalledPlugin.fromJson({...json}..remove('hasSettings'), '/root').hasSettings, isNull);
+    expect(
+      CsInstalledPlugin.fromJson(
+        {...json}..remove('hasSettings'),
+        '/root',
+      ).hasSettings,
+      isNull,
+    );
     expect(plugin.withSettings(false).hasSettings, isFalse);
     expect(plugin.withSettings(false).filePath, plugin.filePath);
   });

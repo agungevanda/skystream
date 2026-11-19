@@ -1,7 +1,9 @@
 import 'dart:io';
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:flutter_displaymode/flutter_displaymode.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../config/tmdb_config.dart';
 import '../storage/storage_service.dart';
 import '../network/doh_service.dart';

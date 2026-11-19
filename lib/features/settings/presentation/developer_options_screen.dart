@@ -108,19 +108,7 @@ class _DeveloperOptionsScreenState
                     icon: Icons.bug_report_rounded,
                     title: l10n.viewLogs,
                     subtitle: l10n.viewLogsSubtitle,
-                    onTap: () {
-                      if (kDebugMode) {
-                        unawaited(const AppLogsRoute().push<void>(context));
-                      } else {
-                        ref
-                            .read(notificationServiceProvider)
-                            .showInfo(
-                              'Log tracking requires a debug build to work',
-                              title: 'Developer Options',
-                              icon: Icons.developer_mode_rounded,
-                            );
-                      }
-                    },
+                    onTap: () => const AppLogsRoute().push<void>(context),
                   ),
                   SettingsTile(
                     icon: Icons.timeline_rounded,

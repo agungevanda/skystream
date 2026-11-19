@@ -73,30 +73,33 @@ void main() {
     return container;
   }
 
-  test('every add-on is fetched again, and the ones that moved named', () async {
-    final client = _Client(<String, AddonManifest>{
-      moved: _manifest('moved', 'Torrentio', '1.1.0'),
-      same: _manifest('same', 'Cinemeta', '3.0.0'),
-    });
-    final container = boot(client);
+  test(
+    'every add-on is fetched again, and the ones that moved named',
+    () async {
+      final client = _Client(<String, AddonManifest>{
+        moved: _manifest('moved', 'Torrentio', '1.1.0'),
+        same: _manifest('same', 'Cinemeta', '3.0.0'),
+      });
+      final container = boot(client);
 
-    final updated = await container
-        .read(addonRepositoryProvider.notifier)
-        .autoUpdate();
+      final updated = await container
+          .read(addonRepositoryProvider.notifier)
+          .autoUpdate();
 
-    expect(updated, <String>['Torrentio']);
-    expect(client.fetched, unorderedEquals(<String>[moved, same, gone]));
-    final addons = container.read(addonRepositoryProvider).addons;
-    expect(
-      addons.firstWhere((a) => a.manifestUrl == moved).manifest?.version,
-      '1.1.0',
-    );
-    // An add-on that could not be reached keeps what it had.
-    expect(
-      addons.firstWhere((a) => a.manifestUrl == gone).manifest?.version,
-      '1.0.0',
-    );
-  });
+      expect(updated, <String>['Torrentio']);
+      expect(client.fetched, unorderedEquals(<String>[moved, same, gone]));
+      final addons = container.read(addonRepositoryProvider).addons;
+      expect(
+        addons.firstWhere((a) => a.manifestUrl == moved).manifest?.version,
+        '1.1.0',
+      );
+      // An add-on that could not be reached keeps what it had.
+      expect(
+        addons.firstWhere((a) => a.manifestUrl == gone).manifest?.version,
+        '1.0.0',
+      );
+    },
+  );
 
   test('loading the add-ons does not start a refresh of its own', () async {
     final client = _Client(const <String, AddonManifest>{});
@@ -115,5 +118,28 @@ void main() {
       isEmpty,
       reason: 'load() fetched manifests the launch refresh fetches again',
     );
+  });
+
+  test('adult metadata hides active and visible add-ons by default', () {
+    final regular = _stored(same, _manifest('same', 'Regular', '1.0.0'));
+    final adult = _stored(
+      moved,
+      AddonManifest(
+        id: 'adult',
+        name: 'Ordinary name',
+        version: '1.0.0',
+        resources: const [AddonResource(name: 'stream')],
+        types: const ['movie'],
+        behaviorHints: const AddonBehaviorHints(adult: true),
+      ),
+    );
+
+    final hidden = AddonsState(addons: [regular, adult], isLoading: false);
+    expect(hidden.visible, [regular]);
+    expect(hidden.enabled, [regular]);
+
+    final shown = hidden.copyWith(showNsfw: true);
+    expect(shown.visible, [regular, adult]);
+    expect(shown.enabled, [regular, adult]);
   });
 }

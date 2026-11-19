@@ -63,4 +63,16 @@ void main() {
     await second.setDeclinedUpdateTag('v2.1.0');
     expect(second.getDeclinedUpdateTag(), 'v2.1.0');
   });
+
+  test('NSFW is off by default and the choice survives a restart', () async {
+    final first = StorageService();
+    await first.init();
+    expect(first.isNsfwContentEnabled(), isFalse);
+    await first.setNsfwContentEnabled(true);
+    await Hive.close();
+
+    final second = StorageService();
+    await second.init();
+    expect(second.isNsfwContentEnabled(), isTrue);
+  });
 }

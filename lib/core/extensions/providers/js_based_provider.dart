@@ -680,6 +680,17 @@ class JsBasedProvider extends SkyStreamProvider {
   Future<List<MultimediaItem>> search(
     String query, {
     CancelToken? cancelToken,
+  }) => tracePlaybackStage(
+    talker,
+    stage: 'cari sumber',
+    plugin: name,
+    action: () => _search(query, cancelToken: cancelToken),
+    successful: (items) => items.isNotEmpty,
+  );
+
+  Future<List<MultimediaItem>> _search(
+    String query, {
+    CancelToken? cancelToken,
   }) async {
     await _ensureReady();
     if (_error != null) throw JsPluginException("INIT_ERROR", _error!);
@@ -710,7 +721,15 @@ class JsBasedProvider extends SkyStreamProvider {
   }
 
   @override
-  Future<MultimediaItem> getDetails(String url) async {
+  Future<MultimediaItem> getDetails(String url) => tracePlaybackStage(
+    talker,
+    stage: 'ambil episode',
+    plugin: name,
+    action: () => _getDetails(url),
+    successful: (item) => !item.title.startsWith('Error: '),
+  );
+
+  Future<MultimediaItem> _getDetails(String url) async {
     await _ensureReady();
     if (_error != null) throw JsPluginException("INIT_ERROR", _error!);
     // Serialized like every other export: the engine cancels a namespace's
@@ -741,7 +760,15 @@ class JsBasedProvider extends SkyStreamProvider {
   }
 
   @override
-  Future<List<StreamResult>> loadStreams(String url) async {
+  Future<List<StreamResult>> loadStreams(String url) => tracePlaybackStage(
+    talker,
+    stage: 'ambil server',
+    plugin: name,
+    action: () => _loadStreams(url),
+    successful: (streams) => streams.isNotEmpty,
+  );
+
+  Future<List<StreamResult>> _loadStreams(String url) async {
     await _ensureReady();
     if (_error != null) throw JsPluginException("INIT_ERROR", _error!);
     await LocalProxyService.instance.startServer();

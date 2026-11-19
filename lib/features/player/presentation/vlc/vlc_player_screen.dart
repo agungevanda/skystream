@@ -377,6 +377,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// to say who it is waiting on. Null when no plugin is involved: a local
   /// file, a direct link, or sources a sheet already gathered.
   String? _pluginName;
+  Stopwatch? _playbackStartWatch;
 
   /// When the plugin was asked for links: a bot check met since is the one
   /// the startup view waits on.
@@ -1384,7 +1385,8 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     } catch (e) {
       // An extension's own full-screen screen (a game) took the Play and left
       // nothing to play: back to the title, with nothing said.
-      if (e is StreamResolutionException && e.failure == StreamResolutionFailure.extensionScreen) {
+      if (e is StreamResolutionException &&
+          e.failure == StreamResolutionFailure.extensionScreen) {
         if (mounted && !_disposed) _leaveWhenOnTop();
         return;
       }
@@ -1477,6 +1479,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     }
 
     final generation = ++_generation;
+    _playbackStartWatch = Stopwatch()..start();
     _sawError = false;
     _sawEnded = false;
     // Armed per attempt, because an attempt is what "a video" means to libVLC:
@@ -2854,6 +2857,17 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
   /// lists to say so.
   void _markFailed(int index) {
     if (_disposed || !mounted) return;
+    final watch = _playbackStartWatch;
+    if (watch != null && index == _attemptIndex) {
+      logPlaybackStage(
+        talker,
+        stage: 'mulai putar',
+        plugin: _pluginName ?? 'tidak diketahui',
+        success: false,
+        elapsed: watch.elapsed,
+      );
+      _playbackStartWatch = null;
+    }
     setState(() => _failedRows.add(index));
     _publishPanelData();
   }
@@ -3500,9 +3514,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // Numbering only where the plugin actually populated it; a great many hand
     // back zeroes, and `S0 E0` is worse than nothing.
     if (episode.season > 0 && episode.episode > 0) {
-      parts.add(
-        l10n.playerSeasonEpisode(episode.season, episode.episode),
-      );
+      parts.add(l10n.playerSeasonEpisode(episode.season, episode.episode));
     }
     final name = episode.name.trim();
     // Dropped when it is the numbering again under another name, which is what
@@ -4418,6 +4430,17 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
     // the first frame alone would leave the pill up through a recovery.
     if (firstFrame || recovering) _setStatus('');
     if (firstFrame) {
+      final watch = _playbackStartWatch;
+      if (watch != null) {
+        logPlaybackStage(
+          talker,
+          stage: 'mulai putar',
+          plugin: _pluginName ?? 'tidak diketahui',
+          success: true,
+          elapsed: watch.elapsed,
+        );
+        _playbackStartWatch = null;
+      }
       _qoe.firstFrame(
         surfaceWaitMs: _controller.value.videoSurfaceWait?.inMilliseconds,
       );
@@ -5509,8 +5532,7 @@ class _VlcPlayerScreenState extends ConsumerState<VlcPlayerScreen>
                   // The delay a live stream opens at, not a fallback
                   // reopen's own: that one is the distance it went back.
                   liveDelay: Duration(
-                    milliseconds:
-                        PlayerDiagnostics.liveDelayMs ?? kLiveDelayMs,
+                    milliseconds: PlayerDiagnostics.liveDelayMs ?? kLiveDelayMs,
                   ),
                   onLiveSeek: _seekInLiveWindow,
                   onGoLive: _goLive,

@@ -33,9 +33,11 @@ class CloudStreamProvider extends SkyStreamProvider {
 
   /// `cs3:<plugin key>/<provider name>`. The key (see [CloudStreamRepository.keyOf]) includes the
   /// repository: two repositories can offer plugins with the same internal name (forks).
-  static String idFor(String pluginKey, String providerName) => '$idPrefix$pluginKey/$providerName';
+  static String idFor(String pluginKey, String providerName) =>
+      '$idPrefix$pluginKey/$providerName';
 
-  static bool isCloudStreamId(String? id) => id != null && id.startsWith(idPrefix);
+  static bool isCloudStreamId(String? id) =>
+      id != null && id.startsWith(idPrefix);
 
   final CsInstalledPlugin plugin;
   final String pluginKey;
@@ -64,7 +66,9 @@ class CloudStreamProvider extends SkyStreamProvider {
   String get version => '${plugin.info.version}';
 
   @override
-  List<String> get languages => [if (info.lang != null && info.lang!.isNotEmpty) info.lang!];
+  List<String> get languages => [
+    if (info.lang != null && info.lang!.isNotEmpty) info.lang!,
+  ];
 
   @override
   Set<ProviderType> get supportedTypes {
@@ -82,12 +86,33 @@ class CloudStreamProvider extends SkyStreamProvider {
   Future<Map<String, dynamic>> _call(
     Future<Map<String, dynamic>> Function(Cs3Engine engine) call, {
     String kind = 'call',
-  }) => _host.run(_pluginPath, call, kind: kind, provider: packageName, mainUrl: mainUrl, pluginUrl: plugin.info.url);
+  }) => _host.run(
+    _pluginPath,
+    call,
+    kind: kind,
+    provider: packageName,
+    mainUrl: mainUrl,
+    pluginUrl: plugin.info.url,
+  );
 
   @override
-  Future<List<MultimediaItem>> search(String query, {CancelToken? cancelToken}) async {
+  Future<List<MultimediaItem>> search(
+    String query, {
+    CancelToken? cancelToken,
+  }) => tracePlaybackStage(
+    talker,
+    stage: 'cari sumber',
+    plugin: pluginName,
+    action: () => _search(query),
+    successful: (items) => items.isNotEmpty,
+  );
+
+  Future<List<MultimediaItem>> _search(String query) async {
     try {
-      final result = await _call((e) => e.search(name, query, plugin: _pluginPath), kind: 'search');
+      final result = await _call(
+        (e) => e.search(name, query, plugin: _pluginPath),
+        kind: 'search',
+      );
       return [for (final item in _list(result['items'])) _item(item)];
     } catch (error) {
       talker.warning('[CloudStream] $name search failed: $error');
@@ -100,8 +125,13 @@ class CloudStreamProvider extends SkyStreamProvider {
     if (!info.hasMainPage) return const {};
     // One call per section, a few at a time: the engine walks a provider's sections one after
     // another when asked for all of them.
-    final names = info.sections.isEmpty ? const <String?>[null] : info.sections.cast<String?>();
-    final pages = List<Map<String, List<MultimediaItem>>>.filled(names.length, const {});
+    final names = info.sections.isEmpty
+        ? const <String?>[null]
+        : info.sections.cast<String?>();
+    final pages = List<Map<String, List<MultimediaItem>>>.filled(
+      names.length,
+      const {},
+    );
     Object? failure;
     var next = 0;
     Future<void> worker() async {
@@ -114,16 +144,20 @@ class CloudStreamProvider extends SkyStreamProvider {
           );
           pages[index] = {
             for (final section in _list(result['sections']))
-              if (section['error'] == null && _list(section['items']).isNotEmpty)
+              if (section['error'] == null &&
+                  _list(section['items']).isNotEmpty)
                 // Home items carry no provider, like SkyStream plugins' (the carousel would print the
                 // id); details falls back to the active provider, whose home this is.
                 (section['name'] as String? ?? name): [
-                  for (final item in _list(section['items'])) _item(item, stampProvider: false),
+                  for (final item in _list(section['items']))
+                    _item(item, stampProvider: false),
                 ],
           };
         } catch (error) {
           failure = error;
-          talker.warning('[CloudStream] $name home section ${names[index]} failed: $error');
+          talker.warning(
+            '[CloudStream] $name home section ${names[index]} failed: $error',
+          );
         }
       }
     }
@@ -136,9 +170,24 @@ class CloudStreamProvider extends SkyStreamProvider {
   }
 
   @override
-  Future<MultimediaItem> getDetails(String url) async {
-    final result = await _call((e) => e.load(name, url, plugin: _pluginPath), kind: 'load');
-    return details(result, url: url, packageName: packageName, providerName: name);
+  Future<MultimediaItem> getDetails(String url) => tracePlaybackStage(
+    talker,
+    stage: 'ambil episode',
+    plugin: pluginName,
+    action: () => _getDetails(url),
+  );
+
+  Future<MultimediaItem> _getDetails(String url) async {
+    final result = await _call(
+      (e) => e.load(name, url, plugin: _pluginPath),
+      kind: 'load',
+    );
+    return details(
+      result,
+      url: url,
+      packageName: packageName,
+      providerName: name,
+    );
   }
 
   static final _unescape = HtmlUnescape();
@@ -166,9 +215,18 @@ class CloudStreamProvider extends SkyStreamProvider {
     final magnet = result['magnet'] as String? ?? result['torrent'] as String?;
     // A blank data URL is a film not out yet (CloudStream marks it coming soon): nothing to play.
     if (dataUrl != null && dataUrl.isNotEmpty) {
-      episodes.add(Episode(name: title, url: _token(dataUrl), season: 1, episode: 1));
+      episodes.add(
+        Episode(name: title, url: _token(dataUrl), season: 1, episode: 1),
+      );
     } else if (magnet != null) {
-      episodes.add(Episode(name: title, url: _token(magnet, torrent: true), season: 1, episode: 1));
+      episodes.add(
+        Episode(
+          name: title,
+          url: _token(magnet, torrent: true),
+          season: 1,
+          episode: 1,
+        ),
+      );
     } else {
       final raw = _list(result['episodes']);
       for (var i = 0; i < raw.length; i++) {
@@ -179,7 +237,8 @@ class CloudStreamProvider extends SkyStreamProvider {
     final poster = _text(result['posterUrl']);
     final background = _text(result['backgroundPosterUrl']);
     final syncIds = <String, String>{
-      for (final entry in ((result['syncIds'] as Map?) ?? const {}).entries) '${entry.key}': '${entry.value}',
+      for (final entry in ((result['syncIds'] as Map?) ?? const {}).entries)
+        '${entry.key}': '${entry.value}',
     };
     final imdb = syncIds['imdb'];
 
@@ -212,11 +271,14 @@ class CloudStreamProvider extends SkyStreamProvider {
       // CloudStream lists a title's recommendations from its own extension only, and a tap opens them with it.
       recommendations: [
         for (final rec in _list(result['recommendations']))
-          if (rec['apiName'] == providerName && rec['url'] is String) _searchItem(rec, provider: packageName),
+          if (rec['apiName'] == providerName && rec['url'] is String)
+            _searchItem(rec, provider: packageName),
       ],
       syncData: syncIds.isEmpty ? null : syncIds,
       tmdbId: int.tryParse(syncIds['tmdb'] ?? ''),
-      imdbId: imdb != null && RegExp(r'^tt\d{6,}$').hasMatch(imdb) ? imdb : null,
+      imdbId: imdb != null && RegExp(r'^tt\d{6,}$').hasMatch(imdb)
+          ? imdb
+          : null,
       nextAiring: _nextAiring(result['nextAiring'], now ?? DateTime.now()),
       comingSoon: result['comingSoon'] == true,
       seasonNames: [
@@ -231,10 +293,13 @@ class CloudStreamProvider extends SkyStreamProvider {
     final number = (ep['episode'] as num?)?.toInt() ?? index + 1;
     final name = (ep['name'] as String?)?.trim();
     final millis = (ep['date'] as num?)?.toInt();
-    final airedAt =
-        millis == null || millis.abs() > _maxDateMs ? null : DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
+    final airedAt = millis == null || millis.abs() > _maxDateMs
+        ? null
+        : DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true);
     return Episode(
-      name: name != null && name.isNotEmpty ? _unescape.convert(name) : 'Episode $number',
+      name: name != null && name.isNotEmpty
+          ? _unescape.convert(name)
+          : 'Episode $number',
       url: _token(ep['data'] as String),
       season: (ep['season'] as num?)?.toInt() ?? 1,
       episode: number,
@@ -255,20 +320,29 @@ class CloudStreamProvider extends SkyStreamProvider {
 
   static Actor _actor(Map<String, dynamic> actor) {
     final role = _text(actor['role']);
-    final voice = actor['voiceActor'] is Map ? Map<String, dynamic>.from(actor['voiceActor'] as Map) : null;
+    final voice = actor['voiceActor'] is Map
+        ? Map<String, dynamic>.from(actor['voiceActor'] as Map)
+        : null;
     return Actor(
       name: actor['name'] as String? ?? '',
       image: _text(actor['image']),
       role: role ?? _text(actor['roleString']),
       roleIsEnum: role != null,
-      voiceActor: voice == null ? null : Actor(name: voice['name'] as String? ?? '', image: _text(voice['image'])),
+      voiceActor: voice == null
+          ? null
+          : Actor(
+              name: voice['name'] as String? ?? '',
+              image: _text(voice['image']),
+            ),
     );
   }
 
   static Trailer _trailer(Map<String, dynamic> trailer) {
     final referer = _text(trailer['referer']);
     final headers = _stringMap(trailer['headers']) ?? <String, String>{};
-    if (referer != null && !headers.keys.any((k) => k.toLowerCase() == 'referer')) headers['Referer'] = referer;
+    if (referer != null &&
+        !headers.keys.any((k) => k.toLowerCase() == 'referer'))
+      headers['Referer'] = referer;
     return Trailer(
       url: (trailer['url'] as String).trim(),
       raw: trailer['raw'] == true,
@@ -282,9 +356,16 @@ class CloudStreamProvider extends SkyStreamProvider {
     if (value is! Map) return null;
     final unixTime = (value['unixTime'] as num?)?.toInt();
     final episode = (value['episode'] as num?)?.toInt();
-    if (unixTime == null || episode == null || unixTime.abs() > _maxDateMs ~/ 1000) return null;
+    if (unixTime == null ||
+        episode == null ||
+        unixTime.abs() > _maxDateMs ~/ 1000)
+      return null;
     if (unixTime * 1000 <= now.millisecondsSinceEpoch) return null;
-    return NextAiring(episode: episode, unixTime: unixTime, season: (value['season'] as num?)?.toInt());
+    return NextAiring(
+      episode: episode,
+      unixTime: unixTime,
+      season: (value['season'] as num?)?.toInt(),
+    );
   }
 
   static String? _text(Object? value) {
@@ -292,22 +373,38 @@ class CloudStreamProvider extends SkyStreamProvider {
     return text == null || text.isEmpty ? null : text;
   }
 
-  static String? _decode(String? text) => text == null ? null : _unescape.convert(text);
+  static String? _decode(String? text) =>
+      text == null ? null : _unescape.convert(text);
 
   static Map<String, String>? _stringMap(Object? value) {
     if (value is! Map || value.isEmpty) return null;
-    return {for (final entry in value.entries) '${entry.key}': '${entry.value}'};
+    return {
+      for (final entry in value.entries) '${entry.key}': '${entry.value}',
+    };
   }
 
   @override
-  Future<List<StreamResult>> loadStreams(String url) async {
+  Future<List<StreamResult>> loadStreams(String url) => tracePlaybackStage(
+    talker,
+    stage: 'ambil server',
+    plugin: pluginName,
+    action: () => _loadStreams(url),
+    successful: (streams) => streams.isNotEmpty,
+  );
+
+  Future<List<StreamResult>> _loadStreams(String url) async {
     final (:data, :torrent) = _decodeToken(url);
-    if (torrent) return [StreamResult(url: data, source: 'Torrent', providerName: name)];
+    if (torrent)
+      return [StreamResult(url: data, source: 'Torrent', providerName: name)];
 
     await _prepareLinks?.call();
-    final result = await _call((e) => e.loadLinks(name, data, plugin: _pluginPath), kind: 'loadLinks');
+    final result = await _call(
+      (e) => e.loadLinks(name, data, plugin: _pluginPath),
+      kind: 'loadLinks',
+    );
     // Its full-screen window (a game) took the Play, and left no links: nothing to play, and nothing went wrong.
-    if (_list(result['links']).isEmpty && result['fullScreen'] == true) throw const ExtensionScreenEnded();
+    if (_list(result['links']).isEmpty && result['fullScreen'] == true)
+      throw const ExtensionScreenEnded();
     final subtitles = await _subtitles(_list(result['subtitles']));
     return [
       for (final link in _list(result['links']))
@@ -325,10 +422,15 @@ class CloudStreamProvider extends SkyStreamProvider {
     ];
   }
 
-  MultimediaItem _item(Map<String, dynamic> item, {bool stampProvider = true}) =>
-      _searchItem(item, provider: stampProvider ? packageName : null);
+  MultimediaItem _item(
+    Map<String, dynamic> item, {
+    bool stampProvider = true,
+  }) => _searchItem(item, provider: stampProvider ? packageName : null);
 
-  static MultimediaItem _searchItem(Map<String, dynamic> item, {String? provider}) => MultimediaItem(
+  static MultimediaItem _searchItem(
+    Map<String, dynamic> item, {
+    String? provider,
+  }) => MultimediaItem(
     title: item['name'] as String? ?? '',
     url: item['url'] as String,
     posterUrl: item['posterUrl'] as String? ?? '',
@@ -341,10 +443,12 @@ class CloudStreamProvider extends SkyStreamProvider {
   /// CloudStream episode data can be anything (a path, JSON...), and the player treats some
   /// strings (`/...`, `magnet:`) as playable already, so it travels wrapped.
   @visibleForTesting
-  static String token(String data, {bool torrent = false}) => _token(data, torrent: torrent);
+  static String token(String data, {bool torrent = false}) =>
+      _token(data, torrent: torrent);
 
   @visibleForTesting
-  static ({String data, bool torrent}) decodeToken(String token) => _decodeToken(token);
+  static ({String data, bool torrent}) decodeToken(String token) =>
+      _decodeToken(token);
 
   @visibleForTesting
   static String label(Map<String, dynamic> link) => _label(link);
@@ -358,16 +462,23 @@ class CloudStreamProvider extends SkyStreamProvider {
   static ({String data, bool torrent}) _decodeToken(String token) {
     final colon = token.indexOf(':');
     final scheme = colon < 0 ? '' : token.substring(0, colon);
-    if (scheme != 'cs3data' && scheme != 'cs3torrent') return (data: token, torrent: false);
-    return (data: utf8.decode(base64Url.decode(token.substring(colon + 1))), torrent: scheme == 'cs3torrent');
+    if (scheme != 'cs3data' && scheme != 'cs3torrent')
+      return (data: token, torrent: false);
+    return (
+      data: utf8.decode(base64Url.decode(token.substring(colon + 1))),
+      torrent: scheme == 'cs3torrent',
+    );
   }
 
   /// "Server · 1080p". SkyStream reads the quality back from this label.
   static String _label(Map<String, dynamic> link) {
-    final name = (link['name'] as String?)?.trim().isNotEmpty == true ? link['name'] as String : link['source'] as String? ?? 'Link';
+    final name = (link['name'] as String?)?.trim().isNotEmpty == true
+        ? link['name'] as String
+        : link['source'] as String? ?? 'Link';
     final quality = (link['quality'] as num?)?.toInt() ?? 0;
     // CloudStream's Qualities.Unknown is 400, and 0 or less means none.
-    final known = quality > 0 && quality != 400 && !name.contains('${quality}p');
+    final known =
+        quality > 0 && quality != 400 && !name.contains('${quality}p');
     return known ? '$name · ${quality}p' : name;
   }
 
@@ -384,20 +495,28 @@ class CloudStreamProvider extends SkyStreamProvider {
   }
 
   static Map<String, String>? _headers(Map<String, dynamic> link) {
-    final headers = <String, String>{...?(link['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v'))};
+    final headers = <String, String>{
+      ...?(link['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v')),
+    };
     final referer = link['referer'] as String?;
-    if (referer != null && referer.isNotEmpty && !headers.keys.any((k) => k.toLowerCase() == 'referer')) {
+    if (referer != null &&
+        referer.isNotEmpty &&
+        !headers.keys.any((k) => k.toLowerCase() == 'referer')) {
       headers['Referer'] = referer;
     }
     return headers.isEmpty ? null : headers;
   }
 
   /// SkyStream's subtitles carry no headers, so ones that need them go through the local proxy.
-  static Future<List<SubtitleFile>> _subtitles(List<Map<String, dynamic>> raw) async {
+  static Future<List<SubtitleFile>> _subtitles(
+    List<Map<String, dynamic>> raw,
+  ) async {
     final files = <SubtitleFile>[];
     for (final sub in raw) {
       var url = sub['url'] as String;
-      final headers = (sub['headers'] as Map?)?.map((k, v) => MapEntry('$k', '$v'));
+      final headers = (sub['headers'] as Map?)?.map(
+        (k, v) => MapEntry('$k', '$v'),
+      );
       if (headers != null && headers.isNotEmpty) {
         await LocalProxyService.instance.startServer();
         url = LocalProxyService.instance.getProxyUrl(url, headers: headers);
@@ -409,23 +528,31 @@ class CloudStreamProvider extends SkyStreamProvider {
   }
 
   static List<Map<String, dynamic>> _list(Object? value) => [
-    for (final entry in (value as List?) ?? const []) if (entry is Map) Map<String, dynamic>.from(entry),
+    for (final entry in (value as List?) ?? const [])
+      if (entry is Map) Map<String, dynamic>.from(entry),
   ];
 
   /// CloudStream `TvType` to SkyStream's content type.
   static MultimediaContentType _contentType(String? type) => switch (type) {
-    'TvSeries' || 'Cartoon' || 'AsianDrama' || 'Documentary' => MultimediaContentType.series,
+    'TvSeries' ||
+    'Cartoon' ||
+    'AsianDrama' ||
+    'Documentary' => MultimediaContentType.series,
     'Anime' || 'OVA' => MultimediaContentType.anime,
     'Live' => MultimediaContentType.livestream,
-    'Movie' || 'AnimeMovie' || 'Torrent' || 'NSFW' => MultimediaContentType.movie,
+    'Movie' ||
+    'AnimeMovie' ||
+    'Torrent' ||
+    'NSFW' => MultimediaContentType.movie,
     _ => MultimediaContentType.other,
   };
 
-  static ProviderType _providerType(String type) => switch (_contentType(type)) {
-    MultimediaContentType.movie => ProviderType.movie,
-    MultimediaContentType.series => ProviderType.series,
-    MultimediaContentType.anime => ProviderType.anime,
-    MultimediaContentType.livestream => ProviderType.livestream,
-    MultimediaContentType.other => ProviderType.other,
-  };
+  static ProviderType _providerType(String type) =>
+      switch (_contentType(type)) {
+        MultimediaContentType.movie => ProviderType.movie,
+        MultimediaContentType.series => ProviderType.series,
+        MultimediaContentType.anime => ProviderType.anime,
+        MultimediaContentType.livestream => ProviderType.livestream,
+        MultimediaContentType.other => ProviderType.other,
+      };
 }

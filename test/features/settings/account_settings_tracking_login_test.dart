@@ -7,6 +7,7 @@ import 'package:skystream/core/storage/secure_token_storage.dart';
 import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/core/storage/storage_service.dart';
 import 'package:skystream/features/settings/presentation/account_settings_screen.dart';
+import 'package:skystream/features/settings/presentation/general_settings_provider.dart';
 import 'package:skystream/features/settings/presentation/player_settings_provider.dart';
 import 'package:skystream/features/tracking/data/simkl_service.dart';
 import 'package:skystream/features/tracking/data/trakt_service.dart';
@@ -37,6 +38,7 @@ void main() {
           notificationServiceProvider.overrideWithValue(notifications),
           secureTokenStorageProvider.overrideWithValue(NoTokens()),
           settingsRepositoryProvider.overrideWithValue(QuietSettings()),
+          generalSettingsProvider.overrideWithValue(const GeneralSettings()),
           playerSettingsProvider.overrideWithBuild((_, _) => player),
           trackingAuthProvider.overrideWith(SignedOutTrackers.new),
           if (simkl != null) simklServiceProvider.overrideWithValue(simkl),

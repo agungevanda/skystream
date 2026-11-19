@@ -7,6 +7,7 @@ import '../../../core/utils/layout_constants.dart';
 import '../../../core/extensions/models/extension_plugin.dart';
 import '../../../core/extensions/models/extension_repository.dart';
 import '../../../core/extensions/extension_manager.dart';
+import '../../settings/presentation/general_settings_provider.dart';
 import '../providers/extensions_controller.dart';
 import 'plugin_settings_dialog.dart';
 import '../../../shared/widgets/cards_wrapper.dart';
@@ -305,12 +306,15 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
     ExtensionsState state,
   ) {
     final l10n = AppLocalizations.of(context)!;
+    final showNsfw = ref.watch(
+      generalSettingsProvider.select((settings) => settings.nsfwContentEnabled),
+    );
     if (state is ExtensionsLoading && state.installedPlugins.isEmpty) {
       return const Center(child: AppLoadingIndicator());
     }
 
     final debugPlugins = state.installedPlugins
-        .where((p) => p.isDebug)
+        .where((p) => p.isDebug && (showNsfw || !p.isNsfw))
         .toList();
     final hasDebug = debugPlugins.isNotEmpty;
 
@@ -323,6 +327,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
         .where(
           (p) =>
               !p.isDebug &&
+              (showNsfw || !p.isNsfw) &&
               (state.availablePlugins.isEmpty ||
                   allAvailablePackageNames.contains(p.packageName)),
         )
@@ -332,6 +337,7 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
         .where(
           (p) =>
               !p.isDebug &&
+              (showNsfw || !p.isNsfw) &&
               state.availablePlugins.isNotEmpty &&
               !allAvailablePackageNames.contains(p.packageName),
         )
@@ -410,6 +416,9 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
     ExtensionsState state,
   ) {
     final l10n = AppLocalizations.of(context)!;
+    final showNsfw = ref.watch(
+      generalSettingsProvider.select((settings) => settings.nsfwContentEnabled),
+    );
     if (state is ExtensionsLoading && state.repositories.isEmpty) {
       return const Center(child: AppLoadingIndicator());
     }
@@ -471,7 +480,9 @@ class _ExtensionsScreenState extends ConsumerState<ExtensionsScreen>
       itemBuilder: (context, index) {
         if (index < state.repositories.length) {
           final repo = state.repositories[index];
-          final plugins = state.availablePlugins[repo.url] ?? [];
+          final plugins = (state.availablePlugins[repo.url] ?? [])
+              .where((plugin) => showNsfw || !plugin.isNsfw)
+              .toList();
           return _buildRepositoryCard(context, ref, state, repo, plugins, l10n);
         }
 
@@ -1042,13 +1053,24 @@ class _PluginTileState extends ConsumerState<_PluginTile> {
           size: 22,
         ),
       ),
-      title: Text(
-        widget.plugin.name,
-        style: Theme.of(context).textTheme.titleMedium
-            ?.copyWith(fontWeight: FontWeight.w600),
-        overflow: TextOverflow.ellipsis,
+      title: Row(
+        children: [
+          Flexible(
+            child: Text(
+              widget.plugin.name,
+              style: Theme.of(context).textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: LayoutConstants.spacingXs),
+          Text(
+            'v${installedPlugin?.version ?? widget.plugin.version}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
       ),
-      subtitle: _buildSubtitle(context, isInstalled, installedPlugin),
+      subtitle: _buildSubtitle(context),
       trailing: isInstalling
           ? const Padding(
               padding: EdgeInsets.all(12),
@@ -1221,78 +1243,45 @@ class _PluginTileState extends ConsumerState<_PluginTile> {
         .installPlugin(widget.plugin);
   }
 
-  /// Subtitle widget: description · version/authors line · language chips.
-  Widget _buildSubtitle(
-    BuildContext context,
-    bool isInstalled,
-    ExtensionPlugin? installedPlugin,
-  ) {
+  /// Subtitle widget: type · language · author, then description.
+  Widget _buildSubtitle(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    final descStyle = textTheme.bodyMedium?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-    );
     final metaStyle = textTheme.bodySmall?.copyWith(
       color: colorScheme.onSurfaceVariant,
     );
-
-    // The installed copy's version if there is one, otherwise the catalog's.
-    final version =
-        'v${isInstalled ? installedPlugin!.version : widget.plugin.version}';
-
     final authors = widget.plugin.authors.take(2).join(', ');
-
-    final metaParts = [version, if (authors.isNotEmpty) 'By $authors'];
+    final metaParts = [
+      if (widget.plugin.categories.isNotEmpty)
+        widget.plugin.categories.take(3).join(' / '),
+      if (widget.plugin.languages.isNotEmpty)
+        widget.plugin.languages.take(3).join(', ').toUpperCase(),
+      if (authors.isNotEmpty) authors,
+    ];
     final metaLine = metaParts.join(' • ');
 
     final desc = widget.plugin.description;
     final hasDesc = desc != null && desc.isNotEmpty;
-    final hasLanguages = widget.plugin.languages.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (metaLine.isNotEmpty)
+          Text(
+            metaLine,
+            style: metaStyle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
         if (hasDesc)
           Text(
             desc,
-            style: descStyle,
+            style: metaStyle,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
-        const SizedBox(height: 2),
-        Text(
-          metaLine,
-          style: metaStyle,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-        if (hasLanguages) ...[
-          const SizedBox(height: 4),
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: widget.plugin.languages.take(5).map((lang) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  lang.toUpperCase(),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: colorScheme.onSecondaryContainer,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
       ],
     );
   }

@@ -940,7 +940,15 @@ void main() {
     host.loaded.clear();
     await notifier.learnSettings();
     expect(host.loaded.map((l) => l.path), [plugin.filePath]);
-    await Future<void>.delayed(const Duration(milliseconds: 10));
+    await _until(
+      () =>
+          container
+              .read(cloudStreamRepositoryProvider)
+              .installed
+              .single
+              .hasSettings !=
+          null,
+    );
     host.loaded.clear();
     await notifier.learnSettings();
     expect(host.loaded, isEmpty, reason: 'known now');

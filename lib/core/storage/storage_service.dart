@@ -1,5 +1,7 @@
 import 'package:crypto/crypto.dart';
+
 import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -7,7 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
 import 'dart:io';
+
 import '../domain/entity/multimedia_item.dart';
 import 'app_temp_directory.dart';
 
@@ -388,6 +392,16 @@ class StorageService {
         true;
   }
 
+  Future<void> setNsfwContentEnabled(bool enabled) async {
+    await _settingsBox.put('nsfw_content_enabled', enabled);
+  }
+
+  bool isNsfwContentEnabled() {
+    return (_settingsBox.get('nsfw_content_enabled', defaultValue: false)
+            as bool?) ??
+        false;
+  }
+
   // --- Search History ---
 
   /// Recent search queries, most-recent-first.
@@ -452,10 +466,9 @@ class StorageService {
 
   bool isAnimeSkipIntegrationEnabled() {
     return (_settingsBox.get(
-              'animeskip_integration_enabled',
-              defaultValue: false,
-            )
-            as bool?) ??
+          'animeskip_integration_enabled',
+          defaultValue: false,
+        ) as bool?) ??
         false;
   }
 
@@ -842,7 +855,10 @@ class StorageService {
           await prefs.setString(entry.key, entry.value);
         }
         if (savedDisabledExtensions != null) {
-          await prefs.setStringList('disabled_extensions', savedDisabledExtensions);
+          await prefs.setStringList(
+            'disabled_extensions',
+            savedDisabledExtensions,
+          );
         }
         if (savedPinnedExtensions != null) {
           await prefs.setStringList('pinned_extensions', savedPinnedExtensions);

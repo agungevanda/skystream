@@ -1,7 +1,10 @@
 import 'dart:developer' as developer;
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:talker_flutter/talker_flutter.dart';
+
+import 'persistent_log.dart';
 
 /// How many entries the in-memory log ring buffer keeps.
 ///
@@ -37,11 +40,21 @@ final RegExp _secretAssignment = RegExp(
   caseSensitive: false,
 );
 
-/// `Authorization: Bearer xxx` style credentials, where the name is gone by the
+final RegExp _quotedSecretAssignment = RegExp(
+  r'''([A-Za-z0-9_.\-]{0,40}(?:api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|client[_-]?secret|authorization|password|passwd|token|secret|signature)[A-Za-z0-9_.\-]{0,40}["']?\s*[:=]\s*)(["'])(?:\\.|(?!\2)[^\x0d\x0a])*?(?:\2|$)''',
+  caseSensitive: false,
+  multiLine: true,
+);
+
+/// `Authorization: Bearer *** style credentials, where the name is gone by the
 /// time the value is printed.
 final RegExp _bearerToken = RegExp(
-  r'\b(Bearer|Basic|Token)\s+([A-Za-z0-9._\-+/=]{8,})',
+  r'\b(Bearer|Basic|Token)\s+([A-Za-z0-9._\-+/=]+)',
   caseSensitive: false,
+);
+
+final RegExp _emailAddress = RegExp(
+  r'\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b',
 );
 
 /// A JWT anywhere in the text, named or not.
@@ -62,6 +75,10 @@ String redactSecrets(String input) {
   // read as the single word `Bearer`, leaving the token itself in the clear.
   return input
       .replaceAllMapped(
+        _quotedSecretAssignment,
+        (Match m) => '${m[1]}${m[2]}$kRedactedPlaceholder${m[2]}',
+      )
+      .replaceAllMapped(
         _bearerToken,
         (Match m) => '${m[1]} $kRedactedPlaceholder',
       )
@@ -69,7 +86,8 @@ String redactSecrets(String input) {
         _secretAssignment,
         (Match m) => '${m[1]}${m[2]}${m[3]}$kRedactedPlaceholder${m[3]}',
       )
-      .replaceAll(_jsonWebToken, kRedactedPlaceholder);
+      .replaceAll(_jsonWebToken, kRedactedPlaceholder)
+      .replaceAll(_emailAddress, kRedactedPlaceholder);
 }
 
 /// Redacts and truncates [data], returning [data] itself when neither applies.
@@ -85,15 +103,24 @@ TalkerData sanitizeLogEntry(TalkerData data) {
   final Object? thrown = data.exception ?? data.error;
   final String? thrownText = thrown?.toString();
   final String? cleanThrown = thrownText == null ? null : _clean(thrownText);
+  final title = data.title;
+  final cleanTitle = title == null ? null : _clean(title);
+  final stack = data.stackTrace?.toString();
+  final cleanStack = stack == null ? null : _clean(stack);
 
-  if (cleanMessage == message && cleanThrown == thrownText) return data;
+  if (cleanMessage == message &&
+      cleanThrown == thrownText &&
+      cleanTitle == title &&
+      cleanStack == stack) {
+    return data;
+  }
 
   return TalkerLog(
     cleanMessage,
     key: data.key,
-    title: data.title,
+    title: cleanTitle,
     logLevel: data.logLevel,
-    stackTrace: data.stackTrace,
+    stackTrace: cleanStack == null ? null : StackTrace.fromString(cleanStack),
     time: data.time,
     pen: data.pen,
     exception: cleanThrown,
@@ -119,6 +146,8 @@ class RedactingTalkerHistory implements TalkerHistory {
     : _inner = DefaultTalkerHistory(settings);
 
   final DefaultTalkerHistory _inner;
+  PersistentLog? persistent;
+  LogPreferences? preferences;
 
   @override
   List<TalkerData> get history => _inner.history;
@@ -127,7 +156,72 @@ class RedactingTalkerHistory implements TalkerHistory {
   void clean() => _inner.clean();
 
   @override
-  void write(TalkerData data) => _inner.write(sanitizeLogEntry(data));
+  void write(TalkerData data) {
+    final clean = sanitizeLogEntry(data);
+    if (preferences != null &&
+        (clean.logLevel == LogLevel.debug ||
+            clean.logLevel == LogLevel.verbose) &&
+        preferences?.verbose != true) {
+      return;
+    }
+    _inner.write(clean);
+    final store = persistent;
+    if (store != null) {
+      final message = [
+        clean.message,
+        clean.exception,
+        clean.error,
+      ].whereType<Object>().join(' ');
+      unawaited(
+        store.add(message, time: clean.time).catchError((Object error) {
+          debugPrint(
+            'Log persistence failed: ${redactSecrets(error.toString())}',
+          );
+        }),
+      );
+    }
+  }
+}
+
+final Expando<RedactingTalkerHistory> _histories = Expando();
+
+Future<void> attachPersistentLog(
+  Talker logger,
+  PersistentLog store, {
+  LogPreferences? preferences,
+}) async {
+  final history = _histories[logger];
+  if (history == null) throw ArgumentError('Unsupported Talker history');
+  history.preferences = preferences;
+  await store.open();
+  final records = await store.read();
+  final startup = List<TalkerData>.of(history.history);
+  history.clean();
+  for (final record in records) {
+    history.write(TalkerLog(record.message, time: record.time));
+  }
+  final pending = <Future<void>>[];
+  for (final entry in startup) {
+    if (preferences != null &&
+        !preferences.verbose &&
+        (entry.logLevel == LogLevel.debug ||
+            entry.logLevel == LogLevel.verbose)) {
+      continue;
+    }
+    history.write(entry);
+    pending.add(
+      store.add(
+        [
+          entry.message,
+          entry.exception,
+          entry.error,
+        ].whereType<Object>().join(' '),
+        time: entry.time,
+      ),
+    );
+  }
+  history.persistent = store;
+  await Future.wait(pending);
 }
 
 /// Builds the app's logger.
@@ -151,14 +245,17 @@ Talker createAppTalker({
     maxHistoryItems: kAppLogHistoryLimit,
   );
   final void Function(String) sink = output ?? _consoleOutput;
-  return Talker(
+  final history = RedactingTalkerHistory(settings);
+  final logger = Talker(
     // Talker formats for the console straight off the raw entry, bypassing the
     // history, so the redaction has to be repeated here or a debug console
     // would still print the credential the buffer just stripped.
     logger: TalkerLogger(output: (String line) => sink(redactSecrets(line))),
     settings: settings,
-    history: RedactingTalkerHistory(settings),
+    history: history,
   );
+  _histories[logger] = history;
+  return logger;
 }
 
 /// Mirrors `TalkerFlutter.init`'s default output, which is not reachable when
@@ -182,3 +279,47 @@ void _consoleOutput(String message) {
 
 /// Global Talker instance for logging across the app.
 final Talker talker = createAppTalker(releaseMode: kReleaseMode);
+LogPreferences? appLogPreferences;
+PersistentLog? appPersistentLog;
+
+void logPlaybackStage(
+  Talker logger, {
+  required String stage,
+  required String plugin,
+  required bool success,
+  required Duration elapsed,
+}) {
+  logger.info(
+    '$stage | plugin: $plugin | ${success ? 'berhasil' : 'gagal'} | ${elapsed.inMilliseconds} ms',
+  );
+}
+
+Future<T> tracePlaybackStage<T>(
+  Talker logger, {
+  required String stage,
+  required String plugin,
+  required Future<T> Function() action,
+  bool Function(T result)? successful,
+}) async {
+  final watch = Stopwatch()..start();
+  try {
+    final result = await action();
+    logPlaybackStage(
+      logger,
+      stage: stage,
+      plugin: plugin,
+      success: successful?.call(result) ?? true,
+      elapsed: watch.elapsed,
+    );
+    return result;
+  } catch (_) {
+    logPlaybackStage(
+      logger,
+      stage: stage,
+      plugin: plugin,
+      success: false,
+      elapsed: watch.elapsed,
+    );
+    rethrow;
+  }
+}

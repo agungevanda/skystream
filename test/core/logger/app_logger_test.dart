@@ -15,6 +15,37 @@ import 'package:talker_flutter/talker_flutter.dart';
 ///  * the buffer cannot grow without bound over a long session.
 void main() {
   group('release logging', () {
+    test(
+      'timed stage reports failures while preserving the exception',
+      () async {
+        final logger = createAppTalker(releaseMode: true);
+        await expectLater(
+          tracePlaybackStage(
+            logger,
+            stage: 'ambil episode',
+            plugin: 'Demo',
+            action: () async => throw StateError('failed'),
+          ),
+          throwsStateError,
+        );
+        expect(logger.history.single.message, contains('gagal'));
+      },
+    );
+    test('playback stages contain plugin, outcome and duration', () {
+      final logger = createAppTalker(releaseMode: true);
+      logPlaybackStage(
+        logger,
+        stage: 'ambil server',
+        plugin: 'Contoh',
+        success: false,
+        elapsed: const Duration(milliseconds: 42),
+      );
+      final line = logger.history.single.message!;
+      expect(line, contains('ambil server'));
+      expect(line, contains('Contoh'));
+      expect(line, contains('gagal'));
+      expect(line, contains('42 ms'));
+    });
     test('records to the buffer but writes nothing to the console', () {
       final List<String> console = <String>[];
       final Talker logger = createAppTalker(
@@ -87,6 +118,35 @@ void main() {
   });
 
   group('redaction', () {
+    test('redacts quoted password containing spaces', () {
+      final result = redactSecrets('password="alpha beta gamma"');
+      expect(result, isNot(contains('beta gamma')));
+    });
+    test(
+      'redacts quoted credentials with punctuation or missing closing quote',
+      () {
+        for (final input in <String>[
+          "password='alpha beta, gamma'",
+          '"api_key": "alpha beta; gamma"',
+          'token="alpha beta gamma',
+        ]) {
+          final result = redactSecrets(input);
+          expect(result, isNot(contains('alpha')));
+          expect(result, isNot(contains('beta')));
+          expect(result, isNot(contains('gamma')));
+        }
+      },
+    );
+    test('sanitizes secrets in title and stack trace', () {
+      final entry = TalkerLog(
+        'safe',
+        title: 'user@example.com',
+        stackTrace: StackTrace.fromString('Bearer abc'),
+      );
+      final clean = sanitizeLogEntry(entry);
+      expect(clean.title, isNot(contains('user@example.com')));
+      expect(clean.stackTrace.toString(), isNot(contains('abc')));
+    });
     test('strips an api key out of a logged URL', () {
       final Talker logger = createAppTalker(
         releaseMode: true,
@@ -121,24 +181,28 @@ void main() {
       expect(text, contains(kRedactedPlaceholder));
     });
 
-    test('strips a secret carried by the exception rather than the message',
-        () {
-      final Talker logger = createAppTalker(
-        releaseMode: true,
-        output: (String _) {},
-      );
+    test(
+      'strips a secret carried by the exception rather than the message',
+      () {
+        final Talker logger = createAppTalker(
+          releaseMode: true,
+          output: (String _) {},
+        );
 
-      logger.handle(
-        Exception('403 for https://api.opensubtitles.com/api/v1/subtitles'
-            '?apikey=topsecretvalue'),
-        StackTrace.current,
-        'subtitle search failed',
-      );
+        logger.handle(
+          Exception(
+            '403 for https://api.opensubtitles.com/api/v1/subtitles'
+            '?apikey=topsecretvalue',
+          ),
+          StackTrace.current,
+          'subtitle search failed',
+        );
 
-      final String text = _text(logger);
-      expect(text, isNot(contains('topsecretvalue')));
-      expect(text, contains(kRedactedPlaceholder));
-    });
+        final String text = _text(logger);
+        expect(text, isNot(contains('topsecretvalue')));
+        expect(text, contains(kRedactedPlaceholder));
+      },
+    );
 
     test('leaves a clean entry untouched, type and all', () {
       final Talker logger = createAppTalker(
@@ -158,7 +222,9 @@ void main() {
       talker.cleanHistory();
       addTearDown(talker.cleanHistory);
 
-      talker.info('sync: https://api.trakt.tv/sync?access_token=live-token-xyz');
+      talker.info(
+        'sync: https://api.trakt.tv/sync?access_token=live-token-xyz',
+      );
 
       final String text = _text(talker);
       expect(text, isNot(contains('live-token-xyz')));
@@ -167,6 +233,11 @@ void main() {
   });
 
   group('redactSecrets', () {
+    test('removes email and short bearer credentials', () {
+      final out = redactSecrets('user@example.com Bearer abc');
+      expect(out, isNot(contains('user@example.com')));
+      expect(out, isNot(contains('abc')));
+    });
     test('is a no-op on ordinary text', () {
       const String plain = 'Bootstrap: loaded 12 extensions in 340 ms';
       expect(redactSecrets(plain), plain);

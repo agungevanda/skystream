@@ -170,8 +170,9 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
     final healthProbing = healthAsync.isLoading;
     final healthGone = healthAsync.hasError;
     final searching = _searchQuery.trim().isNotEmpty;
+    final visible = state.visible;
     final filtered = [
-      for (final addon in state.addons)
+      for (final addon in visible)
         if (addon.matchesQuery(_searchQuery)) addon,
     ];
 
@@ -336,14 +337,14 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
           children: [
             Text(
               searching
-                  ? 'Installed (${filtered.length}/${state.addons.length})'
-                  : 'Installed (${state.addons.length})',
+                  ? 'Installed (${filtered.length}/${visible.length})'
+                  : 'Installed (${visible.length})',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
             const Spacer(),
-            if (state.addons.isNotEmpty && !searching)
+            if (visible.isNotEmpty && !searching)
               Text(
                 'Use 3-dot menu to reorder',
                 style: theme.textTheme.labelSmall?.copyWith(
@@ -352,7 +353,7 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
               ),
           ],
         ),
-        if (state.addons.length >= 2) ...[
+        if (visible.length >= 2) ...[
           const SizedBox(height: 10),
           TextField(
             controller: _searchController,
@@ -377,12 +378,12 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
           ),
         ],
         const SizedBox(height: 10),
-        if (state.isLoading && state.addons.isEmpty)
+        if (state.isLoading && visible.isEmpty)
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(child: CircularProgressIndicator()),
           ),
-        if (!state.isLoading && state.addons.isEmpty)
+        if (!state.isLoading && visible.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Text(
@@ -394,7 +395,7 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
               ),
             ),
           ),
-        if (!state.isLoading && state.addons.isNotEmpty && filtered.isEmpty)
+        if (!state.isLoading && visible.isNotEmpty && filtered.isEmpty)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 20),
             child: Text(
@@ -407,24 +408,22 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
           ),
         // Index into state.addons so reorder stays correct while searching
         // only hides rows (reorder actions are disabled while searching).
-        for (int i = 0; i < state.addons.length; i++)
-          if (state.addons[i].matchesQuery(_searchQuery))
+        for (int i = 0; i < visible.length; i++)
+          if (visible[i].matchesQuery(_searchQuery))
             _AddonTile(
-              key: ValueKey(state.addons[i].manifestUrl),
-              addon: state.addons[i],
+              key: ValueKey(visible[i].manifestUrl),
+              addon: visible[i],
               index: i,
               isFirst: i == 0,
-              isLast: i == state.addons.length - 1,
-              health: healthGone
-                  ? null
-                  : healthByUrl[state.addons[i].manifestUrl],
+              isLast: i == visible.length - 1,
+              health: healthGone ? null : healthByUrl[visible[i].manifestUrl],
               healthProbing: !healthGone && healthProbing,
               onToggle: (value) => unawaited(
                 ref
                     .read(addonRepositoryProvider.notifier)
-                    .setEnabled(state.addons[i].manifestUrl, value),
+                    .setEnabled(visible[i].manifestUrl, value),
               ),
-              onRemove: () => unawaited(_confirmRemove(state.addons[i])),
+              onRemove: () => unawaited(_confirmRemove(visible[i])),
               onMoveUp: i > 0 && !searching
                   ? () => unawaited(
                       ref
@@ -432,7 +431,7 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
                           .reorder(i, i - 1),
                     )
                   : null,
-              onMoveDown: i < state.addons.length - 1 && !searching
+              onMoveDown: i < visible.length - 1 && !searching
                   ? () => unawaited(
                       ref
                           .read(addonRepositoryProvider.notifier)
@@ -441,7 +440,7 @@ class _AddonManageViewState extends ConsumerState<AddonManageView> {
                   : null,
               onConfigure: () async {
                 final configureUrl = AddonTransport.baseUrl(
-                  state.addons[i].manifestUrl,
+                  visible[i].manifestUrl,
                 );
                 final uri = Uri.tryParse('$configureUrl/configure');
                 if (uri == null) return;
@@ -511,8 +510,7 @@ class _AddonTileState extends State<_AddonTile> {
     final theme = Theme.of(context);
     final cs = theme.colorScheme;
     final manifest = widget.addon.manifest;
-    final resources =
-        manifest?.resources.map((r) => r.name).toList() ?? const [];
+    final types = manifest?.types.take(3).join(' / ') ?? '';
 
     return Focus(
       onKeyEvent: (node, event) {
@@ -589,14 +587,37 @@ class _AddonTileState extends State<_AddonTile> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            '${widget.addon.displayName}  v${manifest?.version ?? '?'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.addon.displayName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'v${manifest?.version ?? '?'}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ],
                           ),
+                          if (types.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                types,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ),
                           if ((manifest?.description ?? '').isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
@@ -629,34 +650,6 @@ class _AddonTileState extends State<_AddonTile> {
                                 probing: widget.healthProbing,
                               ),
                             ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 4,
-                            children: [
-                              for (final resource in resources)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 6,
-                                    vertical: 2,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: cs.primaryContainer.withValues(
-                                      alpha: 0.6,
-                                    ),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    resource,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color: cs.onPrimaryContainer,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
                         ],
                       ),
                     ),

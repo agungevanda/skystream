@@ -374,6 +374,7 @@ class ManagedAddon {
       manifest?.name ?? Uri.tryParse(manifestUrl)?.host ?? 'Add-on';
 
   bool get isActive => enabled && manifest != null;
+  bool get isAdult => manifest?.behaviorHints.adult ?? false;
 
   /// Whether [query] matches this install for the Manage-tab search box.
   ///

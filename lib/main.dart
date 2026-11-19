@@ -12,12 +12,15 @@ import 'package:flutter/services.dart'; // LogicalKeyboardKey, KeyDownEvent
 import 'package:flutter/foundation.dart'; // For kReleaseMode
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:challenge_browser/challenge_browser.dart' show PageDialog;
 
 import 'core/theme/theme_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
 import 'core/storage/storage_service.dart';
+import 'core/logger/app_logger.dart';
+import 'core/logger/persistent_log.dart';
 import 'core/network/doh_service.dart';
 
 import 'package:dynamic_color/dynamic_color.dart';
@@ -163,6 +166,25 @@ class _AppRootState extends State<AppRoot> {
           }),
       ]);
 
+      try {
+        final dir = await getApplicationSupportDirectory();
+        final base = '${dir.path}${Platform.pathSeparator}';
+        final preferences = LogPreferences(File('${base}log_settings.json'));
+        await preferences.load();
+        appLogPreferences = preferences;
+        final log = PersistentLog(
+          File('${base}app.log'),
+          retentionDays: preferences.retentionDays,
+        );
+        await attachPersistentLog(talker, log, preferences: preferences);
+        appPersistentLog = log;
+        talker.info('Penyimpanan log aktif');
+      } catch (error) {
+        talker.warning(
+          'Persistent log unavailable: ${redactSecrets(error.toString())}',
+        );
+      }
+
       // The developer option's QoE switch, kept across launches.
       QoeLog.writeToAppLog = _storageService.getDevQoeLog();
 
@@ -218,9 +240,7 @@ class _AppRootState extends State<AppRoot> {
       // first - so there is no parent scope for dependencies to describe.
       // ignore: riverpod_lint/scoped_providers_should_specify_dependencies
       overrides: [storageServiceProvider.overrideWithValue(_storageService)],
-      child: const ExtensionsSyncBridge(
-        child: ClearanceBridge(child: MyApp()),
-      ),
+      child: const ExtensionsSyncBridge(child: ClearanceBridge(child: MyApp())),
     );
   }
 }
@@ -252,17 +272,26 @@ class _MyAppState extends ConsumerState<MyApp> {
       unawaited(_loadInstalledExtensions());
       // CloudStream providers are listed from what was installed; no engine starts here.
       // Repositories its plugins add (MegaRepo's) are announced like a collection's.
-      _cloudStreamNews = ref.read(cloudStreamRepositoryProvider.notifier).watchNews().listen((report) {
-        if (mounted) _announceExtensionUpdates(report);
-      });
+      _cloudStreamNews = ref
+          .read(cloudStreamRepositoryProvider.notifier)
+          .watchNews()
+          .listen((report) {
+            if (mounted) _announceExtensionUpdates(report);
+          });
       // An extension's toasts, copies and links: the engine leaves them to the app on the desktops and iOS.
-      _cloudStreamNotices = ref.read(cloudStreamRepositoryProvider.notifier).watchNotices().listen((notice) {
-        if (mounted) _showExtensionNotice(notice);
-      });
+      _cloudStreamNotices = ref
+          .read(cloudStreamRepositoryProvider.notifier)
+          .watchNotices()
+          .listen((notice) {
+            if (mounted) _showExtensionNotice(notice);
+          });
       // A window an extension shows while the person waits on it (a title opening, its links): in the sheet.
-      _cloudStreamWaiting = ref.read(cloudStreamRepositoryProvider.notifier).watchWaitingScreens().listen((screen) {
-        if (mounted) unawaited(_showWaitingScreen(screen));
-      });
+      _cloudStreamWaiting = ref
+          .read(cloudStreamRepositoryProvider.notifier)
+          .watchWaitingScreens()
+          .listen((screen) {
+            if (mounted) unawaited(_showWaitingScreen(screen));
+          });
       _checkAppUpdates();
       unawaited(_checkExtensionsUpdates());
     });
@@ -274,7 +303,8 @@ class _MyAppState extends ConsumerState<MyApp> {
     unawaited(_cloudStreamNews?.cancel());
     unawaited(_cloudStreamNotices?.cancel());
     unawaited(_cloudStreamWaiting?.cancel());
-    if (ExtensionPages.shared.dialogs == _showPageDialog) ExtensionPages.shared.dialogs = null;
+    if (ExtensionPages.shared.dialogs == _showPageDialog)
+      ExtensionPages.shared.dialogs = null;
     super.dispose();
   }
 
@@ -465,31 +495,58 @@ class _MyAppState extends ConsumerState<MyApp> {
 
   /// An extension's toast, copy or link, with the router's strings (see [_announceExtensionUpdates]).
   void _showExtensionNotice(ExtensionNotice notice) {
-    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    final navContext = ref
+        .read(appRouterProvider)
+        .routerDelegate
+        .navigatorKey
+        .currentContext;
     if (navContext == null || !navContext.mounted) return;
     final l10n = AppLocalizations.of(navContext);
     if (l10n == null) return;
-    unawaited(showExtensionNotice(notice, l10n: l10n, notifications: ref.read(notificationServiceProvider)));
+    unawaited(
+      showExtensionNotice(
+        notice,
+        l10n: l10n,
+        notifications: ref.read(notificationServiceProvider),
+      ),
+    );
   }
 
   /// A page's own alert, confirm or prompt its extension left to the app (see [showExtensionPageDialog]), over whatever
   /// shows; cancelled when nothing can show it.
-  Future<({bool accept, String? text})> _showPageDialog(PageDialog dialog, Future<void> gone) async {
-    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
-    if (navContext == null || !navContext.mounted) return (accept: false, text: null);
+  Future<({bool accept, String? text})> _showPageDialog(
+    PageDialog dialog,
+    Future<void> gone,
+  ) async {
+    final navContext = ref
+        .read(appRouterProvider)
+        .routerDelegate
+        .navigatorKey
+        .currentContext;
+    if (navContext == null || !navContext.mounted)
+      return (accept: false, text: null);
     return showExtensionPageDialog(navContext, dialog, gone: gone);
   }
 
   /// An extension's window the person waits on, in the sheet over whatever shows (see [showExtensionWindows]).
   Future<void> _showWaitingScreen(WaitingScreen screen) async {
-    final navContext = ref.read(appRouterProvider).routerDelegate.navigatorKey.currentContext;
+    final navContext = ref
+        .read(appRouterProvider)
+        .routerDelegate
+        .navigatorKey
+        .currentContext;
     if (navContext == null || !navContext.mounted) {
       await screen.session.close(force: true);
       screen.session.dispose();
       return;
     }
     final tv = ref.read(deviceProfileProvider).value?.isTv ?? false;
-    await showExtensionWindows(navContext, session: screen.session, name: screen.name, tv: tv);
+    await showExtensionWindows(
+      navContext,
+      session: screen.session,
+      name: screen.name,
+      tv: tv,
+    );
   }
 
   Future<void> _toggleFullscreen() async {

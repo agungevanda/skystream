@@ -6,6 +6,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/addon_manifest.dart';
+import '../../../features/settings/presentation/general_settings_provider.dart';
 import 'addon_client.dart';
 
 part 'addon_repository.g.dart';
@@ -13,22 +14,35 @@ part 'addon_repository.g.dart';
 class AddonsState {
   final List<ManagedAddon> addons;
   final bool isLoading;
+  final bool showNsfw;
 
-  const AddonsState({this.addons = const [], this.isLoading = true});
+  const AddonsState({
+    this.addons = const [],
+    this.isLoading = true,
+    this.showNsfw = false,
+  });
 
-  List<ManagedAddon> get enabled =>
-      addons.where((a) => a.isActive).toList(growable: false);
+  List<ManagedAddon> get enabled => addons
+      .where((a) => a.isActive && (showNsfw || !a.isAdult))
+      .toList(growable: false);
+
+  List<ManagedAddon> get visible =>
+      addons.where((a) => showNsfw || !a.isAdult).toList(growable: false);
 
   int get catalogCount => enabled.fold(
     0,
     (sum, addon) => sum + (addon.manifest?.catalogs.length ?? 0),
   );
 
-  AddonsState copyWith({List<ManagedAddon>? addons, bool? isLoading}) =>
-      AddonsState(
-        addons: addons ?? this.addons,
-        isLoading: isLoading ?? this.isLoading,
-      );
+  AddonsState copyWith({
+    List<ManagedAddon>? addons,
+    bool? isLoading,
+    bool? showNsfw,
+  }) => AddonsState(
+    addons: addons ?? this.addons,
+    isLoading: isLoading ?? this.isLoading,
+    showNsfw: showNsfw ?? this.showNsfw,
+  );
 }
 
 /// Owns the user's add-on list: install, enable, order, refresh, persistence.
@@ -47,7 +61,16 @@ class AddonRepository extends _$AddonRepository {
   @override
   AddonsState build() {
     _loaded = Future.microtask(load);
-    return const AddonsState();
+    final settings = ref.exists(generalSettingsProvider)
+        ? ref.read(generalSettingsProvider)
+        : null;
+    if (settings != null) {
+      ref.listen(
+        generalSettingsProvider,
+        (_, next) => state = state.copyWith(showNsfw: next.nsfwContentEnabled),
+      );
+    }
+    return AddonsState(showNsfw: settings?.nsfwContentEnabled ?? false);
   }
 
   Future<void> load() async {
@@ -68,7 +91,13 @@ class AddonRepository extends _$AddonRepository {
           if (kDebugMode) debugPrint('[AddonRepository] bad entry: $error');
         }
       }
-      state = AddonsState(addons: addons, isLoading: false);
+      state = AddonsState(
+        addons: addons,
+        isLoading: false,
+        showNsfw: ref.exists(generalSettingsProvider)
+            ? ref.read(generalSettingsProvider).nsfwContentEnabled
+            : false,
+      );
       // Manifests can change (new catalogs, renamed rows), but the refresh is
       // not started from here: the launch runs [autoUpdate] once for every
       // extension system, and a second pass would fetch everything twice.
