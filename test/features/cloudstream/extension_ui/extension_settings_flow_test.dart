@@ -12,6 +12,7 @@ import 'package:skystream/core/cloudstream/cloudstream_models.dart';
 import 'package:skystream/core/cloudstream/cloudstream_repository.dart';
 import 'package:skystream/core/providers/device_info_provider.dart';
 import 'package:skystream/features/cloudstream/presentation/cloudstream_screen.dart';
+import 'package:skystream/features/settings/presentation/general_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 const _info = CsPluginInfo(
@@ -34,7 +35,8 @@ class _FakeCloudStream extends CloudStreamRepository {
   Future<void> learnSettings() async {}
 
   @override
-  Future<void> applySettings(CsInstalledPlugin plugin) async => applied.add(plugin.info.name);
+  Future<void> applySettings(CsInstalledPlugin plugin) async =>
+      applied.add(plugin.info.name);
 }
 
 /// An engine host whose extension shows one checkbox, and closes when told to.
@@ -63,7 +65,13 @@ class _FakeHost extends CloudStreamEngineHost {
         {
           'id': 'w1',
           'kind': 'sheet',
-          'root': {'id': 1, 'kind': 'checkbox', 'text': 'Second provider', 'checked': true, 'tappable': true},
+          'root': {
+            'id': 1,
+            'kind': 'checkbox',
+            'text': 'Second provider',
+            'checked': true,
+            'tappable': true,
+          },
         },
       ],
     });
@@ -88,9 +96,20 @@ class _FakeHost extends CloudStreamEngineHost {
   }
 
   @override
-  Future<Map<String, dynamic>> uiAction(int session, int node, String action, [Object? value]) async {
+  Future<Map<String, dynamic>> uiAction(
+    int session,
+    int node,
+    String action, [
+    Object? value,
+  ]) async {
     sent.add('$node $action');
-    if (action == 'close') _events.add({'event': 'uiClosed', 'session': session, 'reason': 'closed', 'actions': 0});
+    if (action == 'close')
+      _events.add({
+        'event': 'uiClosed',
+        'session': session,
+        'reason': 'closed',
+        'actions': 0,
+      });
     return {'done': true};
   }
 
@@ -99,7 +118,12 @@ class _FakeHost extends CloudStreamEngineHost {
   @override
   Future<void> closeUi(int session, {bool force = false}) async {
     closed.add('$session $force');
-    _events.add({'event': 'uiClosed', 'session': session, 'reason': 'closed', 'actions': 0});
+    _events.add({
+      'event': 'uiClosed',
+      'session': session,
+      'reason': 'closed',
+      'actions': 0,
+    });
   }
 
   /// The extension's code crashed on the main thread: the engine ended the screen.
@@ -125,7 +149,12 @@ void main() {
       hasSettings: hasSettings,
     );
     final repository = _FakeCloudStream(
-      CloudStreamState(isLoading: false, installed: [plugin], applying: applying, popups: popups),
+      CloudStreamState(
+        isLoading: false,
+        installed: [plugin],
+        applying: applying,
+        popups: popups,
+      ),
     );
     final host = _FakeHost();
     await tester.pumpWidget(
@@ -135,7 +164,10 @@ void main() {
         overrides: [
           cloudStreamRepositoryProvider.overrideWith(() => repository),
           cloudStreamEngineHostProvider.overrideWithValue(host),
-          deviceProfileProvider.overrideWith((ref) async => const DeviceProfile()),
+          deviceProfileProvider.overrideWith(
+            (ref) async => const DeviceProfile(),
+          ),
+          generalSettingsProvider.overrideWithValue(const GeneralSettings()),
         ],
         child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -148,7 +180,9 @@ void main() {
     return (repository, host);
   }
 
-  testWidgets('Settings shows only for an extension with a screen', (tester) async {
+  testWidgets('Settings shows only for an extension with a screen', (
+    tester,
+  ) async {
     await boot(tester, hasSettings: null);
     expect(find.byTooltip('Settings'), findsNothing);
     await boot(tester, hasSettings: false);
@@ -157,7 +191,9 @@ void main() {
     expect(find.byTooltip('Settings'), findsOneWidget);
   });
 
-  testWidgets('Support shows only while the extension has pop-ups kept', (tester) async {
+  testWidgets('Support shows only while the extension has pop-ups kept', (
+    tester,
+  ) async {
     await boot(tester);
     expect(find.byTooltip('Support'), findsNothing);
     await boot(
@@ -169,22 +205,29 @@ void main() {
     expect(find.byTooltip('Support'), findsOneWidget);
   });
 
-  testWidgets('Support opens the kept pop-ups in the sheet, and nothing reloads after', (tester) async {
-    final (repository, host) = await boot(
-      tester,
-      popups: {
-        '/x/Alpha.cs3': ['Support us'],
-      },
-    );
-    await tester.tap(find.byTooltip('Support'));
-    await tester.pumpAndSettle();
-    expect(find.text('Support us'), findsOneWidget);
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    expect(find.text('Support us'), findsNothing);
-    expect(repository.applied, isEmpty, reason: "a pop-up's screen doesn't apply settings");
-    expect(host.sent, ['1 close']);
-  });
+  testWidgets(
+    'Support opens the kept pop-ups in the sheet, and nothing reloads after',
+    (tester) async {
+      final (repository, host) = await boot(
+        tester,
+        popups: {
+          '/x/Alpha.cs3': ['Support us'],
+        },
+      );
+      await tester.tap(find.byTooltip('Support'));
+      await tester.pumpAndSettle();
+      expect(find.text('Support us'), findsOneWidget);
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      expect(find.text('Support us'), findsNothing);
+      expect(
+        repository.applied,
+        isEmpty,
+        reason: "a pop-up's screen doesn't apply settings",
+      );
+      expect(host.sent, ['1 close']);
+    },
+  );
 
   testWidgets('an extension being applied says so', (tester) async {
     await boot(tester, applying: {CloudStreamRepository.keyOf(_info)});
@@ -205,7 +248,9 @@ void main() {
     expect(find.text("Alpha's settings applied"), findsOneWidget);
   });
 
-  testWidgets('a sheet closed without a change applies nothing', (tester) async {
+  testWidgets('a sheet closed without a change applies nothing', (
+    tester,
+  ) async {
     final (repository, _) = await boot(tester);
     await tester.tap(find.byTooltip('Settings'));
     await tester.pumpAndSettle();
@@ -214,56 +259,66 @@ void main() {
     expect(repository.applied, isEmpty);
   });
 
-  testWidgets('a screen whose extension crashed closes, says so, and still applies what changed', (tester) async {
-    final (repository, host) = await boot(tester);
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Second provider'));
-    await tester.pump();
-    host.crash(3);
-    await tester.pumpAndSettle();
-    expect(find.text('Second provider'), findsNothing);
-    expect(find.textContaining("Alpha's settings stopped"), findsOneWidget);
-    expect(repository.applied, ['Alpha']);
-  });
+  testWidgets(
+    'a screen whose extension crashed closes, says so, and still applies what changed',
+    (tester) async {
+      final (repository, host) = await boot(tester);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Second provider'));
+      await tester.pump();
+      host.crash(3);
+      await tester.pumpAndSettle();
+      expect(find.text('Second provider'), findsNothing);
+      expect(find.textContaining("Alpha's settings stopped"), findsOneWidget);
+      expect(repository.applied, ['Alpha']);
+    },
+  );
 
-  testWidgets('a sheet taken away while its screen is open closes the screen before the change applies', (
-    tester,
-  ) async {
-    final (repository, host) = await boot(tester);
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Second provider'));
-    await tester.pump();
-    // The app navigates away under the sheet: its route goes without Back reaching it.
-    Navigator.of(tester.element(find.text('Second provider'))).pop();
-    await tester.pumpAndSettle();
-    expect(host.closed, ['3 true']);
-    expect(repository.applied, ['Alpha']);
-  });
+  testWidgets(
+    'a sheet taken away while its screen is open closes the screen before the change applies',
+    (tester) async {
+      final (repository, host) = await boot(tester);
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Second provider'));
+      await tester.pump();
+      // The app navigates away under the sheet: its route goes without Back reaching it.
+      Navigator.of(tester.element(find.text('Second provider'))).pop();
+      await tester.pumpAndSettle();
+      expect(host.closed, ['3 true']);
+      expect(repository.applied, ['Alpha']);
+    },
+  );
 
   testWidgets("a screen that doesn't open says why", (tester) async {
     final (_, host) = await boot(tester);
     host.failing = true;
     await tester.tap(find.byTooltip('Settings'));
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.textContaining("Couldn't open Alpha's settings"), findsOneWidget);
+    expect(
+      find.textContaining("Couldn't open Alpha's settings"),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('a double tap on Settings opens one screen; once it closes, Settings opens it again', (tester) async {
-    final (_, host) = await boot(tester);
-    host.holdOpen = Completer();
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pump(const Duration(milliseconds: 80));
-    await tester.tap(find.byTooltip('Settings'));
-    host.holdOpen!.complete();
-    host.holdOpen = null;
-    await tester.pumpAndSettle();
-    expect(host.opened, 1);
-    await tester.tap(find.byTooltip('Close'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Settings'));
-    await tester.pumpAndSettle();
-    expect(host.opened, 2);
-  });
+  testWidgets(
+    'a double tap on Settings opens one screen; once it closes, Settings opens it again',
+    (tester) async {
+      final (_, host) = await boot(tester);
+      host.holdOpen = Completer();
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pump(const Duration(milliseconds: 80));
+      await tester.tap(find.byTooltip('Settings'));
+      host.holdOpen!.complete();
+      host.holdOpen = null;
+      await tester.pumpAndSettle();
+      expect(host.opened, 1);
+      await tester.tap(find.byTooltip('Close'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Settings'));
+      await tester.pumpAndSettle();
+      expect(host.opened, 2);
+    },
+  );
 }

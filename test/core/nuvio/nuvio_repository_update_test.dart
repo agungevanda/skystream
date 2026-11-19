@@ -93,13 +93,21 @@ void main() {
         );
   });
 
-  tearDown(() {
+  tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           const MethodChannel('plugins.flutter.io/path_provider'),
           null,
         );
-    if (support.existsSync()) support.deleteSync(recursive: true);
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (support.existsSync()) {
+      try {
+        support.deleteSync(recursive: true);
+      } on FileSystemException {
+        if (DateTime.now().isAfter(deadline)) rethrow;
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+    }
   });
 
   ProviderContainer boot(_FakeNuvio nuvio, {bool autoUpdate = true}) {
@@ -123,6 +131,19 @@ void main() {
     return container;
   }
 
+  Future<void> waitForPrefetch() async {
+    final cache = Directory(
+      '${support.path}${Platform.pathSeparator}nuvio_plugins',
+    );
+    final deadline = DateTime.now().add(const Duration(seconds: 1));
+    while (!cache.existsSync() || cache.listSync().whereType<File>().isEmpty) {
+      if (DateTime.now().isAfter(deadline)) {
+        throw StateError('timed out waiting for Nuvio code prefetch');
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+    }
+  }
+
   test('a repository checked a minute ago is still refreshed', () async {
     final nuvio = _FakeNuvio('1.1.0');
     final container = boot(nuvio);
@@ -130,8 +151,7 @@ void main() {
     final report = await container
         .read(nuvioRepositoryProvider.notifier)
         .autoUpdate();
-    // Let the background prefetch of the new code finish.
-    await pumpEventQueue();
+    await waitForPrefetch();
 
     expect(report.updated, <String>['Scraper One']);
     expect(report.newPlugins, isEmpty);
@@ -163,7 +183,7 @@ void main() {
       final report = await container
           .read(nuvioRepositoryProvider.notifier)
           .autoUpdate();
-      await pumpEventQueue();
+      await waitForPrefetch();
 
       expect(report.newPlugins, <String, List<String>>{
         'Test Repo': <String>['Scraper Two'],
@@ -174,7 +194,7 @@ void main() {
       final again = await container
           .read(nuvioRepositoryProvider.notifier)
           .autoUpdate();
-      await pumpEventQueue();
+      await waitForPrefetch();
       expect(again.isEmpty, isTrue);
     },
   );

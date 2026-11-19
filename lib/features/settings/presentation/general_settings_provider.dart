@@ -7,6 +7,7 @@ part 'general_settings_provider.g.dart';
 
 class GeneralSettings {
   final bool watchHistoryEnabled;
+  final bool nsfwContentEnabled;
   final String defaultHomeScreen;
   final bool githubProxyEnabled;
   final bool alwaysOnTop;
@@ -21,6 +22,7 @@ class GeneralSettings {
 
   const GeneralSettings({
     this.watchHistoryEnabled = true,
+    this.nsfwContentEnabled = false,
     this.defaultHomeScreen = '/home',
     this.githubProxyEnabled = false,
     this.alwaysOnTop = false,
@@ -33,6 +35,7 @@ class GeneralSettings {
 
   GeneralSettings copyWith({
     bool? watchHistoryEnabled,
+    bool? nsfwContentEnabled,
     String? defaultHomeScreen,
     bool? githubProxyEnabled,
     bool? alwaysOnTop,
@@ -44,6 +47,7 @@ class GeneralSettings {
   }) {
     return GeneralSettings(
       watchHistoryEnabled: watchHistoryEnabled ?? this.watchHistoryEnabled,
+      nsfwContentEnabled: nsfwContentEnabled ?? this.nsfwContentEnabled,
       defaultHomeScreen: defaultHomeScreen ?? this.defaultHomeScreen,
       githubProxyEnabled: githubProxyEnabled ?? this.githubProxyEnabled,
       alwaysOnTop: alwaysOnTop ?? this.alwaysOnTop,
@@ -60,24 +64,35 @@ class GeneralSettings {
 class GeneralSettingsNotifier extends _$GeneralSettingsNotifier {
   @override
   GeneralSettings build() {
-    final repository = ref.watch(settingsRepositoryProvider);
-    return GeneralSettings(
-      watchHistoryEnabled: repository.isWatchHistoryEnabled(),
-      defaultHomeScreen: repository.getDefaultHomeScreen(),
-      githubProxyEnabled: repository.isGithubProxyEnabled(),
-      alwaysOnTop: repository.isAlwaysOnTop(),
-      titlePosition: repository.getTitlePosition(),
-      downloadDirectory: repository.getDownloadDirectory(),
-      downloadConcurrency: repository.getDownloadConcurrency(),
-      downloadChunks: repository.getDownloadChunks(),
-      tmdbApiKey: repository.getTmdbApiKey(),
-    );
+    try {
+      final repository = ref.watch(settingsRepositoryProvider);
+      return GeneralSettings(
+        watchHistoryEnabled: repository.isWatchHistoryEnabled(),
+        nsfwContentEnabled: repository.isNsfwContentEnabled(),
+        defaultHomeScreen: repository.getDefaultHomeScreen(),
+        githubProxyEnabled: repository.isGithubProxyEnabled(),
+        alwaysOnTop: repository.isAlwaysOnTop(),
+        titlePosition: repository.getTitlePosition(),
+        downloadDirectory: repository.getDownloadDirectory(),
+        downloadConcurrency: repository.getDownloadConcurrency(),
+        downloadChunks: repository.getDownloadChunks(),
+        tmdbApiKey: repository.getTmdbApiKey(),
+      );
+    } on UnimplementedError {
+      return const GeneralSettings();
+    }
   }
 
   Future<void> setWatchHistoryEnabled(bool enabled) async {
     final repository = ref.read(settingsRepositoryProvider);
     await repository.setWatchHistoryEnabled(enabled);
     state = state.copyWith(watchHistoryEnabled: enabled);
+  }
+
+  Future<void> setNsfwContentEnabled(bool enabled) async {
+    final repository = ref.read(settingsRepositoryProvider);
+    await repository.setNsfwContentEnabled(enabled);
+    state = state.copyWith(nsfwContentEnabled: enabled);
   }
 
   Future<void> setDefaultHomeScreen(String path) async {

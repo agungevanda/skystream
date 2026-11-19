@@ -27,8 +27,14 @@ class CsRepository {
   /// Why the last check failed, if it did; [plugins] are then from the one before.
   final String? error;
 
-  CsRepository withError(String error) =>
-      CsRepository(url: url, name: name, description: description, iconUrl: iconUrl, plugins: plugins, error: error);
+  CsRepository withError(String error) => CsRepository(
+    url: url,
+    name: name,
+    description: description,
+    iconUrl: iconUrl,
+    plugins: plugins,
+    error: error,
+  );
 
   Map<String, dynamic> toJson() => {
     'url': url,
@@ -45,7 +51,11 @@ class CsRepository {
     iconUrl: json['iconUrl'] as String?,
     plugins: [
       for (final p in (json['plugins'] as List?) ?? const [])
-        if (p is Map) CsPluginInfo.fromJson(Map<String, dynamic>.from(p), json['url'] as String),
+        if (p is Map)
+          CsPluginInfo.fromJson(
+            Map<String, dynamic>.from(p),
+            json['url'] as String,
+          ),
     ],
   );
 }
@@ -90,6 +100,7 @@ class CsPluginInfo {
   final int? fileSize;
 
   bool get isDown => status == 0;
+  bool get isNsfw => tvTypes.any((type) => type.toLowerCase() == 'nsfw');
 
   Map<String, dynamic> toJson() => {
     'internalName': internalName,
@@ -105,7 +116,10 @@ class CsPluginInfo {
     'fileSize': fileSize,
   };
 
-  factory CsPluginInfo.fromJson(Map<String, dynamic> json, String repositoryUrl) => CsPluginInfo(
+  factory CsPluginInfo.fromJson(
+    Map<String, dynamic> json,
+    String repositoryUrl,
+  ) => CsPluginInfo(
     internalName: json['internalName'] as String? ?? json['name'] as String,
     name: json['name'] as String? ?? json['internalName'] as String,
     url: json['url'] as String,
@@ -216,28 +230,35 @@ class CsInstalledPlugin {
     'hasSettings': hasSettings,
   };
 
-  factory CsInstalledPlugin.fromJson(Map<String, dynamic> json, String root) => CsInstalledPlugin(
-    info: CsPluginInfo.fromJson(Map<String, dynamic>.from(json['info'] as Map), json['repositoryUrl'] as String),
-    filePath: _resolve(json, root),
-    providers: [
-      for (final p in (json['providers'] as List?) ?? const [])
-        if (p is Map) CsProviderInfo.fromJson(Map<String, dynamic>.from(p)),
-    ],
-    extractors: (json['extractors'] as num?)?.toInt() ?? 0,
-    loadError: json['loadError'] as String?,
-    loadErrorVersion: json['loadErrorVersion'] as String?,
-    hasSettings: json['hasSettings'] as bool?,
-  );
+  factory CsInstalledPlugin.fromJson(Map<String, dynamic> json, String root) =>
+      CsInstalledPlugin(
+        info: CsPluginInfo.fromJson(
+          Map<String, dynamic>.from(json['info'] as Map),
+          json['repositoryUrl'] as String,
+        ),
+        filePath: _resolve(json, root),
+        providers: [
+          for (final p in (json['providers'] as List?) ?? const [])
+            if (p is Map) CsProviderInfo.fromJson(Map<String, dynamic>.from(p)),
+        ],
+        extractors: (json['extractors'] as num?)?.toInt() ?? 0,
+        loadError: json['loadError'] as String?,
+        loadErrorVersion: json['loadErrorVersion'] as String?,
+        hasSettings: json['hasSettings'] as bool?,
+      );
 
   static String _relative(String path, String root) {
     final normalized = path.replaceAll('\\', '/');
     final base = '${root.replaceAll('\\', '/')}/';
-    return normalized.startsWith(base) ? normalized.substring(base.length) : normalized;
+    return normalized.startsWith(base)
+        ? normalized.substring(base.length)
+        : normalized;
   }
 
   static String _resolve(Map<String, dynamic> json, String root) {
     final file = json['file'] as String?;
-    if (file != null) return file.startsWith('/') || file.contains(':') ? file : '$root/$file';
+    if (file != null)
+      return file.startsWith('/') || file.contains(':') ? file : '$root/$file';
     // Recorded as an absolute path before: keep the part inside CloudStream's folder.
     final legacy = (json['filePath'] as String).replaceAll('\\', '/');
     const marker = '/extensions/cloudstream/';

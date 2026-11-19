@@ -751,12 +751,11 @@ class _ScraperTileState extends ConsumerState<_ScraperTile> {
         .toSet()
         .join(' / ');
     final languages = scraper.contentLanguage.take(3).join(', ');
-    final formats = scraper.formats.take(3).join(' / ');
 
     final metaList = [
       if (typeChips.isNotEmpty) typeChips.toUpperCase(),
       if (languages.isNotEmpty) languages.toUpperCase(),
-      if (formats.isNotEmpty) formats.toUpperCase(),
+      if (scraper.author.isNotEmpty) scraper.author,
     ];
 
     final tile = ListTile(
@@ -813,6 +812,15 @@ class _ScraperTileState extends ConsumerState<_ScraperTile> {
               ),
             ),
           ],
+          if (scraper.description.isNotEmpty)
+            Text(
+              scraper.description,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: cs.onSurfaceVariant,
+              ),
+            ),
           if (_testResult != null) ...[
             const SizedBox(height: 4),
             Container(

@@ -13,6 +13,7 @@ import 'package:skystream/core/extensions/models/extension_plugin.dart';
 import 'package:skystream/core/extensions/models/extension_repository.dart';
 import 'package:skystream/features/extensions/providers/extensions_controller.dart';
 import 'package:skystream/features/extensions/screens/extensions_screen.dart';
+import 'package:skystream/features/settings/presentation/general_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 const String _a = 'https://a.test/repo.json';
@@ -106,6 +107,7 @@ Future<_Recorder> _openB(
       overrides: [
         extensionsControllerProvider.overrideWith(() => controller),
         extensionManagerProvider.overrideWith(() => _Manager()),
+        generalSettingsProvider.overrideWithValue(const GeneralSettings()),
       ],
       child: const MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,

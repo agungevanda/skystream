@@ -29,6 +29,8 @@ class _QuietSettings extends SettingsRepository {
   @override
   bool isWatchHistoryEnabled() => true;
   @override
+  bool isNsfwContentEnabled() => false;
+  @override
   String getDefaultHomeScreen() => '/home';
   @override
   bool isGithubProxyEnabled() => false;
@@ -111,11 +113,12 @@ void main() {
       'CloudStream Extensions',
       'Nuvio Plugins',
       'Stremio Add-ons',
+      'Tampilkan Konten NSFW',
     ]);
     expect(tiles.where((t) => t.isBeta).map((t) => t.title), [
       'CloudStream Extensions',
     ]);
-    expect(tiles.last.isLast, isTrue, reason: 'the card closes on Stremio');
+    expect(tiles.last.isLast, isTrue, reason: 'the card closes on NSFW');
     expect(
       find.descendant(
         of: find.widgetWithText(SettingsTile, 'CloudStream Extensions'),

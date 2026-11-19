@@ -8,6 +8,7 @@ import 'package:skystream/shared/focus/app_focus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:skystream/features/extensions/screens/extensions_screen.dart';
 import 'package:skystream/features/extensions/providers/extensions_controller.dart';
+import 'package:skystream/features/settings/presentation/general_settings_provider.dart';
 import 'package:skystream/core/extensions/extension_manager.dart';
 import 'package:skystream/core/extensions/models/extension_plugin.dart';
 import 'package:skystream/core/extensions/models/extension_repository.dart';
@@ -55,6 +56,26 @@ class MockExtensionManager extends ExtensionManager {
 }
 
 void main() {
+  test('SkyStream NSFW classification uses categories, not names', () {
+    final adult = ExtensionPlugin.fromJson({
+      'packageName': 'com.example.adult',
+      'name': 'Ordinary name',
+      'url': 'https://example.com/adult.js',
+      'version': 1,
+      'categories': ['Movie', 'NSFW'],
+    }, 'repo');
+    final harmless = ExtensionPlugin.fromJson({
+      'packageName': 'com.example.harmless',
+      'name': 'NSFW in a name is not metadata',
+      'url': 'https://example.com/harmless.js',
+      'version': 1,
+      'categories': ['Movie'],
+    }, 'repo');
+
+    expect(adult.isNsfw, isTrue);
+    expect(harmless.isNsfw, isFalse);
+  });
+
   testWidgets(
     'ExtensionsScreen displays 2 tabs and guided empty state when no plugins installed',
     (WidgetTester tester) async {
@@ -79,6 +100,7 @@ void main() {
               () => MockExtensionsController(emptyState),
             ),
             extensionManagerProvider.overrideWith(() => MockExtensionManager()),
+            generalSettingsProvider.overrideWithValue(const GeneralSettings()),
           ],
           child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -140,6 +162,7 @@ void main() {
               () => MockExtensionsController(installedState),
             ),
             extensionManagerProvider.overrideWith(() => MockExtensionManager()),
+            generalSettingsProvider.overrideWithValue(const GeneralSettings()),
           ],
           child: const MaterialApp(
             localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -281,10 +304,7 @@ BoxDecoration _cardDecoration(
 /// Moves real focus onto the control [finder] points at, the way a D-pad
 /// would, by asking for the nearest enclosing focus node.
 Future<void> _focusOn(WidgetTester tester, Finder finder) async {
-  final node = Focus.maybeOf(
-    tester.element(finder),
-    createDependency: false,
-  );
+  final node = Focus.maybeOf(tester.element(finder), createDependency: false);
   expect(node, isNotNull, reason: 'nothing focusable at $finder');
   node!.requestFocus();
   // Two frames: FocusManager applies the change in a microtask, so the first
@@ -325,6 +345,7 @@ Widget _app(ExtensionsState state, {bool visibility = false}) => ProviderScope(
       () => MockExtensionsController(state),
     ),
     extensionManagerProvider.overrideWith(() => MockExtensionManager()),
+    generalSettingsProvider.overrideWithValue(const GeneralSettings()),
   ],
   child: MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -379,9 +400,8 @@ void _focusAffordanceTests() {
       await tester.pumpWidget(_app(_twoInstalled()));
       await tester.pumpAndSettle();
 
-      final scheme = Theme.of(
-        tester.element(find.text('Plugin A')),
-      ).colorScheme;
+      final scheme = Theme.of(tester.element(find.text('Plugin A')))
+          .colorScheme;
 
       // Nothing focused yet: neither row draws anything.
       expect(_rowLayers(tester, find.text('Plugin A')).ring, isNull);
@@ -419,7 +439,10 @@ void _focusAffordanceTests() {
       // than an accent glow.
       final glow = focused.glow;
       expect(glow, isNotNull, reason: 'focused row drew no lift');
-      expect(glow!.boxShadow!.single.color, AppFocus.shadows(focused: true)!.single.color);
+      expect(
+        glow!.boxShadow!.single.color,
+        AppFocus.shadows(focused: true)!.single.color,
+      );
 
       // The neighbour is untouched — this is the whole complaint: from three
       // metres you must be able to tell the fifth row from the fourth.
@@ -434,9 +457,9 @@ void _focusAffordanceTests() {
       await tester.pumpWidget(_app(_twoInstalled()));
       await tester.pumpAndSettle();
 
-      final surface = Theme.of(
-        tester.element(find.text('Plugin A')),
-      ).colorScheme.surface;
+      final surface = Theme.of(tester.element(find.text('Plugin A')))
+          .colorScheme
+          .surface;
 
       final rowB = find.ancestor(
         of: find.text('Plugin B'),
@@ -540,7 +563,6 @@ void _focusAffordanceTests() {
   );
 }
 
-
 /// The two ways this screen used to throw focus away, and the reason a fresh
 /// install read as locked on a television.
 ///
@@ -600,6 +622,7 @@ void _tvDeadEndTests() {
     overrides: [
       extensionsControllerProvider.overrideWith(() => controller),
       extensionManagerProvider.overrideWith(() => MockExtensionManager()),
+      generalSettingsProvider.overrideWithValue(const GeneralSettings()),
     ],
     child: const MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,

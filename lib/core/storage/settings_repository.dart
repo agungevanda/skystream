@@ -1,4 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+
 import 'storage_service.dart';
 
 part 'settings_repository.g.dart';
@@ -131,6 +132,11 @@ class SettingsRepository {
   bool isWatchHistoryEnabled() {
     return _storageService.isWatchHistoryEnabled();
   }
+
+  Future<void> setNsfwContentEnabled(bool enabled) =>
+      _storageService.setNsfwContentEnabled(enabled);
+
+  bool isNsfwContentEnabled() => _storageService.isNsfwContentEnabled();
 
   Future<void> setSearchHistory(List<String> queries) async {
     await _storageService.setSearchHistory(queries);

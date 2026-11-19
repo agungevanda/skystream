@@ -230,6 +230,7 @@ class ExtensionPlugin {
 
   /// Helper to check if this is a debug/asset plugin
   bool get isDebug => packageName.endsWith('.debug');
+  bool get isNsfw => categories.any((type) => type.toLowerCase() == 'nsfw');
 
   /// Whether [repositoryId] is one the app gives a plugin when no repository
   /// it can name supplied one: `Local` for one found on disk without its

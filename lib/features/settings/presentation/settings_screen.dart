@@ -42,9 +42,12 @@ class SettingsScreen extends ConsumerWidget {
               // card by spacingMd, so a horizontal inset here would be paid
               // for twice and the cards would sit further in than on the
               // Accounts screen, which never added one.
-              padding: const EdgeInsets.symmetric(
-                vertical: LayoutConstants.spacingSm,
-              ).copyWith(bottom: LayoutConstants.shellBottomContentPadding(context)),
+              padding:
+                  const EdgeInsets.symmetric(
+                    vertical: LayoutConstants.spacingSm,
+                  ).copyWith(
+                    bottom: LayoutConstants.shellBottomContentPadding(context),
+                  ),
               children: [
                 _buildGeneralSettingsGroup(
                   context,
@@ -80,8 +83,24 @@ class SettingsScreen extends ConsumerWidget {
                       icon: Icons.dashboard_customize_rounded,
                       title: 'Stremio Add-ons',
                       subtitle: 'Manage and discover installed add-ons',
-                      isLast: true,
                       onTap: () => const AddonsRoute().go(context),
+                    ),
+                    SettingsTile(
+                      icon: Icons.visibility_off_rounded,
+                      title: 'Tampilkan Konten NSFW',
+                      subtitle: 'Sembunyikan plugin dan add-on berlabel dewasa',
+                      isLast: true,
+                      trailing: Switch(
+                        value: generalSettings.nsfwContentEnabled,
+                        onChanged: (value) => ref
+                            .read(generalSettingsProvider.notifier)
+                            .setNsfwContentEnabled(value),
+                      ),
+                      onTap: () => ref
+                          .read(generalSettingsProvider.notifier)
+                          .setNsfwContentEnabled(
+                            !generalSettings.nsfwContentEnabled,
+                          ),
                     ),
                   ],
                 ),

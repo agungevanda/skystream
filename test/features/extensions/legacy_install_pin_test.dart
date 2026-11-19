@@ -27,6 +27,7 @@ import 'package:skystream/core/storage/settings_repository.dart';
 import 'package:skystream/core/storage/storage_service.dart';
 import 'package:skystream/features/extensions/providers/extensions_controller.dart';
 import 'package:skystream/features/extensions/screens/extensions_screen.dart';
+import 'package:skystream/features/settings/presentation/general_settings_provider.dart';
 import 'package:skystream/l10n/generated/app_localizations.dart';
 
 const String _a = 'https://a.test/repo.json';
@@ -321,6 +322,7 @@ void main() {
             _FakeSettingsRepository(),
           ),
           extensionManagerProvider.overrideWith(_Manager.new),
+          generalSettingsProvider.overrideWithValue(const GeneralSettings()),
         ],
         child: const MaterialApp(
           localizationsDelegates: AppLocalizations.localizationsDelegates,

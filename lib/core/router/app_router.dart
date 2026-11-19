@@ -5,27 +5,35 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:skystream/features/home/presentation/home_screen.dart';
 import 'package:skystream/features/search/presentation/search_screen.dart';
+
 import '../../features/explore/presentation/explore_screen.dart';
+
 import 'package:skystream/features/library/presentation/library_screen.dart';
 import 'package:skystream/features/addons/presentation/addons_screen.dart';
 import 'package:skystream/features/addons/presentation/addon_detail_screen.dart';
 import 'package:skystream/features/addons/presentation/addon_catalog_screen.dart';
 import 'package:skystream/features/settings/presentation/settings_screen.dart';
 import 'package:skystream/features/player/presentation/vlc/vlc_player_screen.dart';
+
 import '../../features/extensions/screens/extensions_screen.dart';
 import '../../features/nuvio/presentation/nuvio_plugins_screen.dart';
 import '../../features/cloudstream/presentation/cloudstream_screen.dart';
 import '../../features/settings/presentation/player_settings_screen.dart';
 import '../../features/settings/presentation/account_settings_screen.dart';
 import '../../features/settings/presentation/developer_options_screen.dart';
+
 import '../../features/details/presentation/details_screen.dart';
 import '../../features/details/presentation/tmdb_movie_details_screen.dart';
 import '../../features/explore/presentation/view_all_screen.dart';
 import '../domain/entity/multimedia_item.dart';
+
 import 'package:skystream/shared/widgets/app_scaffold.dart';
+
 import '../../core/storage/settings_repository.dart';
+
 import 'package:talker_flutter/talker_flutter.dart';
 import 'package:flutter/foundation.dart';
+
 import '../logger/app_logger.dart';
 
 part 'app_router.g.dart';
@@ -192,13 +200,26 @@ class DeveloperOptionsRoute extends GoRouteData with $DeveloperOptionsRoute {
 class AppLogsRoute extends GoRouteData with $AppLogsRoute {
   const AppLogsRoute();
   @override
-  Widget build(BuildContext context, GoRouterState state) {
-    return TalkerScreen(
-      talker: talker,
-      theme: TalkerScreenTheme(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        textColor: Theme.of(context).colorScheme.onSurface,
-        cardColor: Theme.of(context).colorScheme.surface,
+  Widget build(BuildContext context, GoRouterState state) =>
+      const AppLogsScreen();
+}
+
+class AppLogsScreen extends StatelessWidget {
+  const AppLogsScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = TalkerScreenTheme(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      textColor: Theme.of(context).colorScheme.onSurface,
+      cardColor: Theme.of(context).colorScheme.surface,
+    );
+    return Scaffold(
+      backgroundColor: theme.backgroundColor,
+      body: TalkerView(
+        talker: talker,
+        appBarTitle: 'Log aplikasi',
+        theme: theme,
       ),
     );
   }
@@ -275,16 +296,18 @@ class _RouteExtraEncoder extends Converter<Object?, Object?> {
         'videoUrl': input.videoUrl,
         if (input.episode != null) 'episode': input.episode!.toJson(),
         if (input.preloadedStreams != null)
-          'preloadedStreams':
-              input.preloadedStreams!.map((s) => s.toJson()).toList(),
+          'preloadedStreams': input.preloadedStreams!
+              .map((s) => s.toJson())
+              .toList(),
       };
     }
     if (input is ViewAllRouteExtra) {
       return <String, dynamic>{
         '_type': 'ViewAllRouteExtra',
         'title': input.title,
-        'initialMediaList':
-            input.initialMediaList.map((e) => e.toJson()).toList(),
+        'initialMediaList': input.initialMediaList
+            .map((e) => e.toJson())
+            .toList(),
         'category': input.category.name,
         // onTap is a callback — cannot be serialized; will be null on restore.
       };

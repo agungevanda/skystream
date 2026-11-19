@@ -14,6 +14,7 @@ import '../logger/app_logger.dart';
 import '../models/extension_update_report.dart';
 import '../network/dio_client_provider.dart';
 import '../../features/settings/presentation/app_version_provider.dart';
+import '../../features/settings/presentation/general_settings_provider.dart';
 import 'cloudstream_engine.dart';
 import 'cloudstream_models.dart';
 import 'cloudstream_provider.dart';
@@ -68,7 +69,9 @@ class CloudStreamState {
     for (final repo in repositories) {
       if (repo.url != plugin.info.repositoryUrl) continue;
       for (final offered in repo.plugins) {
-        if (offered.internalName == plugin.info.internalName && offered.version > plugin.info.version) return offered;
+        if (offered.internalName == plugin.info.internalName &&
+            offered.version > plugin.info.version)
+          return offered;
       }
     }
     return null;
@@ -148,15 +151,20 @@ class CloudStreamRepository extends _$CloudStreamRepository {
 
   static List<CsProviderInfo> _providersIn(Map<String, dynamic> answer) => [
     for (final p in (answer['providers'] as List?) ?? const [])
-      if (p is Map && p['error'] == null) CsProviderInfo.fromJson(Map<String, dynamic>.from(p)),
+      if (p is Map && p['error'] == null)
+        CsProviderInfo.fromJson(Map<String, dynamic>.from(p)),
   ];
 
   static final Map<String, String> _slugs = {};
 
   /// Identifies a plugin across repositories: internal names are only unique within one.
-  static String keyOf(CsPluginInfo plugin) => '${_slug(plugin.repositoryUrl)}/${plugin.internalName}';
+  static String keyOf(CsPluginInfo plugin) =>
+      '${_slug(plugin.repositoryUrl)}/${plugin.internalName}';
 
-  static String _slug(String url) => _slugs[url] ??= sha1.convert(utf8.encode(url)).toString().substring(0, 10);
+  static String _slug(String url) => _slugs[url] ??= sha1
+      .convert(utf8.encode(url))
+      .toString()
+      .substring(0, 10);
 
   @override
   CloudStreamState build() {
@@ -166,6 +174,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     _loaded = Future.microtask(load);
     final events = _host.events.listen(_onEngineEvent);
     final loads = _host.loads.listen(_noteLoad);
+    if (ref.exists(generalSettingsProvider)) {
+      ref.listen(generalSettingsProvider, (_, _) => _publish());
+    }
     ref.onDispose(() {
       unawaited(events.cancel());
       unawaited(loads.cancel());
@@ -196,9 +207,13 @@ class CloudStreamRepository extends _$CloudStreamRepository {
 
   /// [error] as a person reads it, without "Exception:" and the like.
   static String errorMessage(Object error) => switch (error) {
-    DioException(:final message, :final type) => message ?? 'network error (${type.name})',
+    DioException(:final message, :final type) =>
+      message ?? 'network error (${type.name})',
     Cs3EngineException(:final message) => message,
-    _ => '$error'.replaceFirst(RegExp(r'^(Exception|FormatException|Bad state|TimeoutException): '), ''),
+    _ => '$error'.replaceFirst(
+      RegExp(r'^(Exception|FormatException|Bad state|TimeoutException): '),
+      '',
+    ),
   };
 
   Dio get _dio => ref.read(dioClientProvider);
@@ -230,7 +245,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     final legacy = prefs.getStringList(_legacyReposKey);
     if (legacy != null) {
       // Kept in preferences before: moved over once.
-      final repos = _each([for (final entry in legacy) _tryDecode(entry)], CsRepository.fromJson);
+      final repos = _each([
+        for (final entry in legacy) _tryDecode(entry),
+      ], CsRepository.fromJson);
       await _repositoriesFile.write(() => [for (final r in repos) r.toJson()]);
       await prefs.remove(_legacyReposKey);
       return repos;
@@ -241,21 +258,29 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   Future<List<CsInstalledPlugin>> _readInstalled() async {
     final root = (await CloudStreamPaths.root()).path;
     final installed = <CsInstalledPlugin>[];
-    for (final plugin in _each(await _installedFile.read(), (json) => CsInstalledPlugin.fromJson(json, root))) {
+    for (final plugin in _each(
+      await _installedFile.read(),
+      (json) => CsInstalledPlugin.fromJson(json, root),
+    )) {
       if (await File(plugin.filePath).exists()) installed.add(plugin);
     }
     return installed;
   }
 
   /// Each entry of [list] that reads; one that does not is skipped, not fatal to the rest.
-  static List<T> _each<T>(Object? list, T Function(Map<String, dynamic> json) read) {
+  static List<T> _each<T>(
+    Object? list,
+    T Function(Map<String, dynamic> json) read,
+  ) {
     final out = <T>[];
     for (final entry in list is List ? list : const <Object?>[]) {
       if (entry is! Map) continue;
       try {
         out.add(read(Map<String, dynamic>.from(entry)));
       } catch (error) {
-        talker.warning('[CloudStream] skipped an entry that does not read: $error');
+        talker.warning(
+          '[CloudStream] skipped an entry that does not read: $error',
+        );
       }
     }
     return out;
@@ -272,11 +297,16 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// Hands the current providers to SkyStream's provider list (none while switched off).
   void _publish() {
     final next = <String, CloudStreamProvider>{};
+    final showNsfw = ref.exists(generalSettingsProvider)
+        ? ref.read(generalSettingsProvider).nsfwContentEnabled
+        : false;
     if (state.enabled) {
       for (final plugin in state.installed) {
+        if (!showNsfw && plugin.info.isNsfw) continue;
         final key = keyOf(plugin.info);
         for (final info in plugin.providers) {
-          final id = '$key|${plugin.info.version}|${plugin.filePath}|${info.name}';
+          final id =
+              '$key|${plugin.info.version}|${plugin.filePath}|${info.name}';
           next[id] =
               _providers[id] ??
               CloudStreamProvider(
@@ -292,7 +322,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     _providers
       ..clear()
       ..addAll(next);
-    ref.read(extensionManagerProvider.notifier).setExternalProviders(_source, [...next.values]);
+    ref.read(extensionManagerProvider.notifier).setExternalProviders(_source, [
+      ...next.values,
+    ]);
   }
 
   /// Switches CloudStream on or off: its screen's switch, the one for all its extensions. Off is not loaded: the
@@ -302,7 +334,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// load as they're used, as at launch.
   Future<void> setEnabled(bool value) async {
     await _loaded;
-    final home = value || !ref.exists(activeProviderProvider) ? null : ref.read(activeProviderProvider);
+    final home = value || !ref.exists(activeProviderProvider)
+        ? null
+        : ref.read(activeProviderProvider);
     state = state.copyWith(enabled: value);
     _host.setSwitchedOff(!value);
     _publish();
@@ -313,7 +347,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       return;
     }
     // Home's provider, if it's one of CloudStream's, leaves with them: noted to come back with them.
-    if (home is CloudStreamProvider) await prefs.setString(_homeKey, home.packageName);
+    if (home is CloudStreamProvider)
+      await prefs.setString(_homeKey, home.packageName);
     for (final plugin in state.installed) {
       try {
         await _host.unload(plugin.filePath, uninstalling: false);
@@ -331,8 +366,11 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     if (id == null) return;
     await prefs.remove(_homeKey);
     if (ref.read(activeProviderProvider) != null) return;
-    final provider = ref.read(extensionManagerProvider.notifier).getProvider(id);
-    if (provider != null) await ref.read(activeProviderProvider.notifier).set(provider);
+    final provider = ref
+        .read(extensionManagerProvider.notifier)
+        .getProvider(id);
+    if (provider != null)
+      await ref.read(activeProviderProvider.notifier).set(provider);
   }
 
   // ── Repositories ────────────────────────────────────────────────────────
@@ -344,18 +382,26 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   Future<String> resolveUrl(String input) async {
     final text = input.trim();
     if (text.isEmpty) throw Exception('Enter a repository URL or shortcode');
-    final link = RegExp(r'^(cloudstreamrepo://|https://cs\.repo/\??)').firstMatch(text);
+    final link = RegExp(r'^(cloudstreamrepo://|https://cs\.repo/\??)')
+        .firstMatch(text);
     if (link != null) {
       final url = text.substring(link.end);
-      return _secure(url.startsWith(RegExp('https?://')) ? url : 'https://$url');
+      return _secure(
+        url.startsWith(RegExp('https?://')) ? url : 'https://$url',
+      );
     }
     if (RegExp(r'^[a-zA-Z0-9!_-]+$').hasMatch(text)) {
       // As typed, then in lower case: codes are case-sensitive, and a television keyboard or a
       // phone's may capitalise the first letter.
-      String shortLink(String code) => code.startsWith('!') ? 'https://py.md/${code.substring(1)}' : 'https://cutt.ly/$code';
+      String shortLink(String code) => code.startsWith('!')
+          ? 'https://py.md/${code.substring(1)}'
+          : 'https://cutt.ly/$code';
       final lower = text.toLowerCase();
       return _secure(
-        await ref.read(repositoryServiceProvider).resolveShortcode([shortLink(text), if (lower != text) shortLink(lower)]),
+        await ref.read(repositoryServiceProvider).resolveShortcode([
+          shortLink(text),
+          if (lower != text) shortLink(lower),
+        ]),
       );
     }
     return _secure(text.contains('://') ? text : 'https://$text');
@@ -363,7 +409,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
 
   /// Repositories, plugin lists and plugins are fetched over HTTPS only: a plugin is code the
   /// app runs, and plain HTTP would let anyone on the network swap it.
-  static String _secure(String url) => url.startsWith('http://') ? 'https://${url.substring(7)}' : url;
+  static String _secure(String url) =>
+      url.startsWith('http://') ? 'https://${url.substring(7)}' : url;
 
   Future<CsRepository> addRepository(String input) async {
     await _loaded;
@@ -393,7 +440,11 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     }
     // Looked up again: the list may have changed while the manifest loaded.
     final index = state.repositories.indexWhere((r) => r.url == url);
-    if (index >= 0) await _setRepositories([...state.repositories]..[index] = updated, save: save);
+    if (index >= 0)
+      await _setRepositories(
+        [...state.repositories]..[index] = updated,
+        save: save,
+      );
     return failure;
   }
 
@@ -403,9 +454,13 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     await _loaded;
     final repos = [
       for (final repo in state.repositories)
-        if (!installedOnly || state.installed.any((p) => p.info.repositoryUrl == repo.url)) repo,
+        if (!installedOnly ||
+            state.installed.any((p) => p.info.repositoryUrl == repo.url))
+          repo,
     ];
-    final failures = await Future.wait([for (final repo in repos) refreshRepository(repo.url, save: false)]);
+    final failures = await Future.wait([
+      for (final repo in repos) refreshRepository(repo.url, save: false),
+    ]);
     await _setRepositories(state.repositories);
     return [
       for (var i = 0; i < repos.length; i++)
@@ -417,35 +472,46 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// repositories (MegaRepo's) does not bring it back.
   Future<void> removeRepository(String url) async {
     await _loaded;
-    for (final plugin in state.installed.where((p) => p.info.repositoryUrl == url).toList()) {
+    for (final plugin
+        in state.installed.where((p) => p.info.repositoryUrl == url).toList()) {
       await uninstall(plugin);
     }
-    await _setRepositories(state.repositories.where((r) => r.url != url).toList());
+    await _setRepositories(
+      state.repositories.where((r) => r.url != url).toList(),
+    );
     await _setRemoved(url, true);
   }
 
   Future<void> _setRemoved(String url, bool removed) async {
     final prefs = await SharedPreferences.getInstance();
     final urls = {...?prefs.getStringList(removedReposKey)};
-    if (removed ? urls.add(url) : urls.remove(url)) await prefs.setStringList(removedReposKey, urls.toList());
+    if (removed ? urls.add(url) : urls.remove(url))
+      await prefs.setStringList(removedReposKey, urls.toList());
   }
 
   Future<CsRepository> _fetchRepository(String url) async {
     final json = await _getJson(url);
     if (json is List) {
       // A bare plugin list.
-      return CsRepository(url: url, name: Uri.parse(url).host, plugins: _sorted(_parsePlugins(json, url)));
+      return CsRepository(
+        url: url,
+        name: Uri.parse(url).host,
+        plugins: _sorted(_parsePlugins(json, url)),
+      );
     }
-    if (json is! Map) throw const FormatException('Not a CloudStream repository');
+    if (json is! Map)
+      throw const FormatException('Not a CloudStream repository');
     final lists = [...?(json['pluginLists'] as List?)?.whereType<String>()];
-    if (lists.isEmpty) throw const FormatException('The repository lists no plugins');
+    if (lists.isEmpty)
+      throw const FormatException('The repository lists no plugins');
     final plugins = <CsPluginInfo>[];
     Object? failure;
     var read = 0;
     for (final list in lists) {
       try {
         final entries = await _getJson(list);
-        if (entries is! List) throw const FormatException('Not a list of plugins');
+        if (entries is! List)
+          throw const FormatException('Not a list of plugins');
         plugins.addAll(_parsePlugins(entries, url));
         read++;
       } catch (error) {
@@ -454,7 +520,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       }
     }
     // Not one list read: a failure, not a repository that suddenly offers nothing.
-    if (read == 0) throw failure ?? const FormatException('The repository lists no plugins');
+    if (read == 0)
+      throw failure ?? const FormatException('The repository lists no plugins');
     return CsRepository(
       url: url,
       name: json['name'] as String? ?? Uri.parse(url).host,
@@ -464,17 +531,26 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     );
   }
 
-  static List<CsPluginInfo> _parsePlugins(List<dynamic> entries, String repositoryUrl) => [
+  static List<CsPluginInfo> _parsePlugins(
+    List<dynamic> entries,
+    String repositoryUrl,
+  ) => [
     for (final entry in entries)
-      if (entry is Map && entry['url'] is String && (entry['internalName'] ?? entry['name']) is String)
+      if (entry is Map &&
+          entry['url'] is String &&
+          (entry['internalName'] ?? entry['name']) is String)
         CsPluginInfo.fromJson(Map<String, dynamic>.from(entry), repositoryUrl),
   ];
 
   static List<CsPluginInfo> _sorted(List<CsPluginInfo> plugins) =>
-      plugins..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      plugins
+        ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
   Future<Object?> _getJson(String url) async {
-    final response = await _dio.get<String>(_secure(url), options: Options(responseType: ResponseType.plain));
+    final response = await _dio.get<String>(
+      _secure(url),
+      options: Options(responseType: ResponseType.plain),
+    );
     final body = response.data ?? '';
     try {
       return jsonDecode(body);
@@ -482,14 +558,19 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       // A login page or a bot check where a repository was (git.disroot.org's for FStream, 2026-10-08): said so,
       // not as the parser's error.
       if (body.trimLeft().startsWith('<')) {
-        throw const FormatException('The address answered with a web page, not a repository');
+        throw const FormatException(
+          'The address answered with a web page, not a repository',
+        );
       }
       rethrow;
     }
   }
 
   /// Replaces the repository list, hands it to the engine, and (with [save]) writes it.
-  Future<void> _setRepositories(List<CsRepository> repos, {bool save = true}) async {
+  Future<void> _setRepositories(
+    List<CsRepository> repos, {
+    bool save = true,
+  }) async {
     state = state.copyWith(repositories: repos);
     _syncRepositories();
     if (save) await _saveRepositories();
@@ -497,20 +578,26 @@ class CloudStreamRepository extends _$CloudStreamRepository {
 
   Future<void> _saveRepositories() {
     _saveTimer?.cancel();
-    return _repositoriesFile.write(() => [for (final r in state.repositories) r.toJson()]);
+    return _repositoriesFile.write(
+      () => [for (final r in state.repositories) r.toJson()],
+    );
   }
 
   /// Saves the list a second after the last change: a plugin adding thirty repositories would
   /// otherwise write it thirty times. The screen shows each one at once regardless.
   void _saveSoon() {
     _saveTimer?.cancel();
-    _saveTimer = Timer(const Duration(seconds: 1), () => unawaited(_saveRepositories()));
+    _saveTimer = Timer(
+      const Duration(seconds: 1),
+      () => unawaited(_saveRepositories()),
+    );
   }
 
   /// Hands the repository list to the engine, where plugins read it.
   void _syncRepositories() => unawaited(
     _host.setRepositories([
-      for (final repo in state.repositories) {'url': repo.url, 'name': repo.name, 'iconUrl': repo.iconUrl},
+      for (final repo in state.repositories)
+        {'url': repo.url, 'name': repo.name, 'iconUrl': repo.iconUrl},
     ]),
   );
 
@@ -553,9 +640,14 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       final dir = await Directory(
         '${(await CloudStreamPaths.plugins()).path}/${_slug(plugin.repositoryUrl)}',
       ).create(recursive: true);
-      final file = File('${dir.path}/${plugin.internalName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}.cs3');
+      final file = File(
+        '${dir.path}/${plugin.internalName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}.cs3',
+      );
       final part = File('${file.path}.part');
-      await _dio.download(_secure(plugin.url).replaceAll(' ', '%20'), part.path);
+      await _dio.download(
+        _secure(plugin.url).replaceAll(' ', '%20'),
+        part.path,
+      );
       if (!state.enabled) {
         // Switched off while it downloaded: the version installed, if any, stays as it was.
         await part.delete();
@@ -575,7 +667,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       } on CloudStreamSwitchedOff {
         // Switched off that very moment: a new install leaves nothing behind, and an update keeps the version
         // installed (its file holds the new one now, which the next update pass installs again).
-        if (!state.installed.any((p) => p.filePath == file.path)) await file.delete();
+        if (!state.installed.any((p) => p.filePath == file.path))
+          await file.delete();
         rethrow;
       }
       await _saveInstalled([
@@ -643,7 +736,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
     final version = await ref.read(keptAppVersionProvider.future);
     final retried = <String>{};
     for (final plugin in [...state.installed]) {
-      if (plugin.loadError == null || plugin.loadErrorVersion == version) continue;
+      if (plugin.loadError == null || plugin.loadErrorVersion == version)
+        continue;
       final key = keyOf(plugin.info);
       final CsInstalledPlugin loaded;
       try {
@@ -666,17 +760,24 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// when it loads, like MegaRepo's. CloudStream loads every plugin at launch, so these run at
   /// launch too.
   static bool _isUtility(CsInstalledPlugin plugin) =>
-      plugin.providers.isEmpty && plugin.extractors == 0 && plugin.loadError == null;
+      plugin.providers.isEmpty &&
+      plugin.extractors == 0 &&
+      plugin.loadError == null;
 
   /// Plugins that only register link extractors serve other plugins' links. CloudStream has every
   /// plugin loaded; here they are loaded before links are first fetched.
   Future<void> _loadExtractorPlugins() async {
     for (final plugin in state.installed) {
-      if (plugin.providers.isNotEmpty || plugin.extractors == 0 || plugin.loadError != null) continue;
+      if (plugin.providers.isNotEmpty ||
+          plugin.extractors == 0 ||
+          plugin.loadError != null)
+        continue;
       try {
         await _host.ensureLoaded(plugin.filePath, pluginUrl: plugin.info.url);
       } catch (error) {
-        talker.warning('[CloudStream] ${plugin.info.name} failed to load: $error');
+        talker.warning(
+          '[CloudStream] ${plugin.info.name} failed to load: $error',
+        );
       }
     }
   }
@@ -701,13 +802,17 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// version: loads them one at a time ([_noteLoad] keeps what they say). Utility plugins (MegaRepo's)
   /// are left alone; loading them would do their work again. Only where an extension's screens can be
   /// drawn ([extensionScreensSupported]): elsewhere nothing would show the answer.
-  Future<void> learnSettings() => _learning ??= _learnSettings().whenComplete(() => _learning = null);
+  Future<void> learnSettings() =>
+      _learning ??= _learnSettings().whenComplete(() => _learning = null);
 
   Future<void> _learnSettings() async {
     await _loaded;
     if (!state.enabled || !extensionScreensSupported) return;
     for (final plugin in [...state.installed]) {
-      if (plugin.hasSettings != null || plugin.loadError != null || _isUtility(plugin)) continue;
+      if (plugin.hasSettings != null ||
+          plugin.loadError != null ||
+          _isUtility(plugin))
+        continue;
       if (_learnFailed.contains(plugin.filePath)) continue;
       try {
         await _host.ensureLoaded(plugin.filePath, pluginUrl: plugin.info.url);
@@ -716,7 +821,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
         break;
       } catch (error) {
         _learnFailed.add(plugin.filePath);
-        talker.warning('[CloudStream] ${plugin.info.name} failed to load: $error');
+        talker.warning(
+          '[CloudStream] ${plugin.info.name} failed to load: $error',
+        );
       }
     }
   }
@@ -733,14 +840,19 @@ class CloudStreamRepository extends _$CloudStreamRepository {
       Map<String, dynamic>? answer;
       (Object, StackTrace)? failure;
       try {
-        answer = await _host.reloadAfresh(plugin.filePath, pluginUrl: plugin.info.url);
+        answer = await _host.reloadAfresh(
+          plugin.filePath,
+          pluginUrl: plugin.info.url,
+        );
       } on CloudStreamSwitchedOff {
         // Nothing loaded and nothing changed: what its screen saved applies once CloudStream is on.
         rethrow;
       } catch (error, stack) {
         failure = (error, stack);
       }
-      final current = state.installed.where((p) => keyOf(p.info) == key).firstOrNull ?? plugin;
+      final current =
+          state.installed.where((p) => keyOf(p.info) == key).firstOrNull ??
+          plugin;
       _providers.removeWhere((id, _) => id.startsWith('$key|'));
       await _saveInstalled([
         for (final p in state.installed)
@@ -750,7 +862,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
             info: current.info,
             filePath: current.filePath,
             providers: _providersIn(answer),
-            extractors: (answer['extractors'] as num?)?.toInt() ?? current.extractors,
+            extractors:
+                (answer['extractors'] as num?)?.toInt() ?? current.extractors,
             hasSettings: answer['hasSettings'] as bool? ?? current.hasSettings,
           )
         else
@@ -763,7 +876,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
             hasSettings: current.hasSettings,
           ),
       ]);
-      if (failure case (final error, final stack)) Error.throwWithStackTrace(error, stack);
+      if (failure case (final error, final stack))
+        Error.throwWithStackTrace(error, stack);
     } finally {
       state = state.copyWith(applying: {...state.applying}..remove(key));
     }
@@ -776,7 +890,8 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   /// engine unless a plugin needs loading.
   Future<ExtensionUpdateReport> autoUpdate() async {
     await _loaded;
-    if (!state.enabled || state.installed.isEmpty) return const ExtensionUpdateReport();
+    if (!state.enabled || state.installed.isEmpty)
+      return const ExtensionUpdateReport();
     await refreshAll(installedOnly: true);
     final updated = <String>{};
     for (final plugin in [...state.installed]) {
@@ -786,19 +901,25 @@ class CloudStreamRepository extends _$CloudStreamRepository {
         final installed = await install(newer);
         if (installed.loadError == null) updated.add(keyOf(newer));
       } catch (error) {
-        talker.warning('[CloudStream] updating ${plugin.info.name} failed: $error');
+        talker.warning(
+          '[CloudStream] updating ${plugin.info.name} failed: $error',
+        );
       }
     }
     final retried = await _retryFailed();
     for (final plugin in state.installed.where(_isUtility)) {
       // Installing an update, or loading one that had failed, has run it already.
-      if (updated.contains(keyOf(plugin.info)) || retried.contains(keyOf(plugin.info))) continue;
+      if (updated.contains(keyOf(plugin.info)) ||
+          retried.contains(keyOf(plugin.info)))
+        continue;
       // Loading an unchanged file again does nothing, so one loaded this session goes first.
       await _host.unload(plugin.filePath, uninstalling: false);
       try {
         await _host.ensureLoaded(plugin.filePath, pluginUrl: plugin.info.url);
       } catch (error) {
-        talker.warning('[CloudStream] ${plugin.info.name} failed to load: $error');
+        talker.warning(
+          '[CloudStream] ${plugin.info.name} failed to load: $error',
+        );
       }
     }
     return ExtensionUpdateReport(
@@ -829,13 +950,25 @@ class CloudStreamRepository extends _$CloudStreamRepository {
         );
       case 'popups' when event['plugin'] is String:
         final key = pathKey(event['plugin'] as String);
-        final titles = [for (final title in (event['titles'] as List?) ?? const []) '$title'];
-        state = state.copyWith(popups: {...state.popups, key: titles}..removeWhere((_, kept) => kept.isEmpty));
-      case 'uiOpened' when event['session'] is num && event['plugin'] is String && !_waiting.isClosed:
+        final titles = [
+          for (final title in (event['titles'] as List?) ?? const []) '$title',
+        ];
+        state = state.copyWith(
+          popups: {...state.popups, key: titles}
+            ..removeWhere((_, kept) => kept.isEmpty),
+        );
+      case 'uiOpened'
+          when event['session'] is num &&
+              event['plugin'] is String &&
+              !_waiting.isClosed:
         // Heard from now: the engine reads the screen's windows a moment after it says so.
         final plugin = event['plugin'] as String;
         _waiting.add((
-          session: ExtensionUiSession.attach(HostUiApi(_host), (event['session'] as num).toInt(), plugin),
+          session: ExtensionUiSession.attach(
+            HostUiApi(_host),
+            (event['session'] as num).toInt(),
+            plugin,
+          ),
           name: _pluginName(plugin),
         ));
     }
@@ -847,8 +980,15 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   Future<void> _addFromPlugin(Map<String, dynamic> event) async {
     await _loaded;
     final url = _secure(event['url'] as String);
-    final removed = (await SharedPreferences.getInstance()).getStringList(removedReposKey) ?? const [];
-    if (removed.contains(url) || state.repositories.any((r) => r.url == url) || !_adding.add(url)) return;
+    final removed =
+        (await SharedPreferences.getInstance()).getStringList(
+          removedReposKey,
+        ) ??
+        const [];
+    if (removed.contains(url) ||
+        state.repositories.any((r) => r.url == url) ||
+        !_adding.add(url))
+      return;
     _announce?.cancel();
     try {
       final repo = await _fetchLimited(() => _fetchRepository(url));
@@ -858,7 +998,9 @@ class CloudStreamRepository extends _$CloudStreamRepository {
         (_added[_pluginName(event['plugin'] as String?)] ??= []).add(repo.name);
       }
     } catch (error) {
-      talker.warning('[CloudStream] repository $url, added by a plugin, did not load: $error');
+      talker.warning(
+        '[CloudStream] repository $url, added by a plugin, did not load: $error',
+      );
     } finally {
       _adding.remove(url);
       if (_adding.isEmpty) _announce = Timer(_announceAfter, _announceAdded);
@@ -875,21 +1017,28 @@ class CloudStreamRepository extends _$CloudStreamRepository {
   String _pluginName(String? path) {
     final wanted = path?.replaceAll('\\', '/');
     for (final plugin in state.installed) {
-      if (plugin.filePath.replaceAll('\\', '/') == wanted) return plugin.info.name;
+      if (plugin.filePath.replaceAll('\\', '/') == wanted)
+        return plugin.info.name;
     }
     return 'CloudStream';
   }
 
   void _setBusy(String key, bool busy) {
-    state = state.copyWith(busy: busy ? {...state.busy, key} : ({...state.busy}..remove(key)));
+    state = state.copyWith(
+      busy: busy ? {...state.busy, key} : ({...state.busy}..remove(key)),
+    );
   }
 
   Future<void> _saveInstalled(List<CsInstalledPlugin> installed) async {
-    installed.sort((a, b) => a.info.name.toLowerCase().compareTo(b.info.name.toLowerCase()));
+    installed.sort(
+      (a, b) => a.info.name.toLowerCase().compareTo(b.info.name.toLowerCase()),
+    );
     state = state.copyWith(installed: installed);
     _publish();
     final root = (await CloudStreamPaths.root()).path;
-    await _installedFile.write(() => [for (final p in state.installed) p.toJson(root)]);
+    await _installedFile.write(
+      () => [for (final p in state.installed) p.toJson(root)],
+    );
   }
 }
 
@@ -902,7 +1051,8 @@ class _JsonFile {
   final String name;
   Future<void> _writing = Future<void>.value();
 
-  Future<File> _file() async => File('${(await CloudStreamPaths.root()).path}/$name');
+  Future<File> _file() async =>
+      File('${(await CloudStreamPaths.root()).path}/$name');
 
   /// The file's content, or null if there is none or it does not read.
   Future<Object?> read() async {
@@ -916,14 +1066,15 @@ class _JsonFile {
     }
   }
 
-  Future<void> write(Object? Function() content) => _writing = _writing.then((_) async {
-    try {
-      final file = await _file();
-      final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(content()), flush: true);
-      await temp.rename(file.path);
-    } catch (error) {
-      talker.warning('[CloudStream] saving $name failed: $error');
-    }
-  });
+  Future<void> write(Object? Function() content) =>
+      _writing = _writing.then((_) async {
+        try {
+          final file = await _file();
+          final temp = File('${file.path}.tmp');
+          await temp.writeAsString(jsonEncode(content()), flush: true);
+          await temp.rename(file.path);
+        } catch (error) {
+          talker.warning('[CloudStream] saving $name failed: $error');
+        }
+      });
 }

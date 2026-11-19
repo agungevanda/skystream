@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/extensions/extension_manager.dart';
+import '../../settings/presentation/general_settings_provider.dart';
 import '../providers/extensions_controller.dart';
 
 /// Listens to [extensionsControllerProvider] and syncs installed plugins into
@@ -37,11 +38,25 @@ class _ExtensionsSyncBridgeState extends ConsumerState<ExtensionsSyncBridge> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<bool>(
+      generalSettingsProvider.select((settings) => settings.nsfwContentEnabled),
+      (_, showNsfw) {
+        final latest = ref.read(extensionsControllerProvider).installedPlugins;
+        ref
+            .read(extensionManagerProvider.notifier)
+            .syncFromPlugins(
+              showNsfw
+                  ? latest
+                  : latest.where((plugin) => !plugin.isNsfw).toList(),
+            );
+      },
+    );
     ref.listen(extensionsControllerProvider, (previous, next) {
       // The first load syncs even with nothing installed: a finished sync is
       // what lets a saved active provider that is gone be given up on, and
       // without one the home screen waits for it forever.
-      final firstLoad = previous is ExtensionsLoading && next is! ExtensionsLoading;
+      final firstLoad =
+          previous is ExtensionsLoading && next is! ExtensionsLoading;
       if (firstLoad ||
           !listEquals(previous?.installedPlugins, next.installedPlugins)) {
         // Coalesce bursts of install/uninstall events into one sync.
@@ -53,7 +68,14 @@ class _ExtensionsSyncBridgeState extends ConsumerState<ExtensionsSyncBridge> {
           final latest = ref
               .read(extensionsControllerProvider)
               .installedPlugins;
-          ref.read(extensionManagerProvider.notifier).syncFromPlugins(latest);
+          final showNsfw = ref.read(generalSettingsProvider).nsfwContentEnabled;
+          ref
+              .read(extensionManagerProvider.notifier)
+              .syncFromPlugins(
+                showNsfw
+                    ? latest
+                    : latest.where((plugin) => !plugin.isNsfw).toList(),
+              );
         });
       }
     });
